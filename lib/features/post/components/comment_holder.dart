@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/post/components/comment_item.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,6 +38,7 @@ class _CommentHolderState extends ConsumerState<CommentHolder> {
 
     await fpApiRequests
         .getReplies(
+      (await whitelabels.getSelectedWhitelabel()).friendlyName,
       widget.comment.id,
       widget.content.id!,
       5,
@@ -52,7 +54,11 @@ class _CommentHolderState extends ConsumerState<CommentHolder> {
 
   Future<CommentModel> sendreply(
       String blogPost, String replyTo, String text) async {
-    final reply = await fpApiRequests.comment(blogPost, text, replyto: replyTo);
+    final reply = await fpApiRequests.comment(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        blogPost,
+        text,
+        replyto: replyTo);
 
     setState(() {
       _replies.insert(

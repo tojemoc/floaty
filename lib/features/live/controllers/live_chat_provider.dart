@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpwebsockets.dart';
 import 'package:flutter/material.dart';
@@ -71,10 +72,10 @@ class ChatManager extends StateNotifier<List<ParsedChatMessage>> {
   final dynamic ref;
 
   void addMessage(ParsedChatMessage message) {
-    state = [
-      ...state,
-      message,
-    ];
+    final newState = [...state, message];
+    state = newState.length > 175
+        ? newState.sublist(newState.length - 175)
+        : newState;
   }
 
   Future<List<InlineSpan>> parseMessage(
@@ -388,6 +389,7 @@ class PollManager extends StateNotifier<List<PollWrapper>> {
   final dynamic ref;
 
   void openPoll(Poll poll) {
+    print('Opening poll ${poll.id}');
     state = [
       ...state,
       PollWrapper(poll: poll, isOpen: true),
@@ -395,6 +397,7 @@ class PollManager extends StateNotifier<List<PollWrapper>> {
   }
 
   void closePoll(Poll poll) async {
+    print('Closing poll ${poll.id}');
     state = state.map((p) {
       if (p.poll.id == poll.id) {
         return PollWrapper(
@@ -413,6 +416,7 @@ class PollManager extends StateNotifier<List<PollWrapper>> {
   }
 
   void updateTally(TallyUpdate update) {
+    print('Updating tally for poll ${update.pollId}');
     state = state.map((p) {
       if (p.poll.id == update.pollId) {
         final updatedTally = RunningTally(
@@ -498,8 +502,11 @@ class WebSocketEventHandler {
   WebSocketEventHandler(this.ref);
   TextEditingController? controller;
 
-  void submitVote(String pollId, int optionIndex) {
-    fpApiRequests.submitVote(pollId, optionIndex);
+  void submitVote(String pollId, int optionIndex) async {
+    fpApiRequests.submitVote(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        pollId,
+        optionIndex);
   }
 
   void sendMessage(String username, String message, String id,

@@ -752,7 +752,8 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
                                 left: 0,
                                 top: 0,
                                 bottom: 0,
-                                child: Container(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
                                   width:
                                       constraints.maxWidth * (percentage / 100),
                                   decoration: BoxDecoration(
@@ -897,6 +898,7 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
     widget.ref
         .read(webSocketEventHandlerProvider)
         .submitVote(widget.poll.poll.id, index);
+    print('Submitted vote for poll ${widget.poll.poll.id} with option $index');
   }
 
   int get totalVotes {
@@ -1146,15 +1148,17 @@ Future<Widget> _buildChatPreview() async {
 
   if (showTimestamps) {
     final localTime = sentAt.toLocal();
-    spans.add(TextSpan(
-      text:
-          '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ',
-      style: TextStyle(
-          fontSize: fontSize,
-          color: Theme.of(rootLayoutKey.currentState!.context)
-              .colorScheme
-              .tertiary),
-    ));
+    spans.add(
+      TextSpan(
+        text:
+            '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ',
+        style: TextStyle(
+            fontSize: fontSize,
+            color: Theme.of(rootLayoutKey.currentState!.context)
+                .colorScheme
+                .tertiary),
+      ),
+    );
   }
 
   // Username button
@@ -1191,7 +1195,10 @@ Future<Widget> _buildChatPreview() async {
   ));
 
   // Message text
-  spans.add(TextSpan(text: 'hello ', style: TextStyle(fontSize: fontSize)));
+  spans.add(TextSpan(
+    text: 'hello ',
+    style: TextStyle(fontSize: fontSize),
+  ));
 
   // Mention button
   spans.add(WidgetSpan(

@@ -1,8 +1,10 @@
 import 'package:floaty/features/authentication/repositories/login_api.dart';
+import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
+import 'package:floaty/features/discordrpc/discord_rpc_controller.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dart';
 import 'package:floaty/features/router/controllers/router.dart';
-import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 // import 'package:floaty/features/logs/repositories/log_service.dart';
 import 'package:go_router/go_router.dart';
@@ -15,12 +17,15 @@ import 'package:floaty/shared/services/system/tray_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform, exit;
+import 'package:flutter/foundation.dart';
+import 'package:app_links/app_links.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:get_it/get_it.dart';
 import 'package:floaty/features/api/repositories/download_manager.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
 // import 'package:firebase_core/firebase_core.dart';
@@ -43,14 +48,44 @@ void main() async {
   // Initialize download manager
   await DownloadManager().initialize();
 
+  // Initialize protocol handler and register custom protocol
+  if (!kIsWeb) {
+    await ProtocolHandler.register();
+  }
+
   // Initialize deep link service
   final deepLinkService = DeepLinkService();
   deepLinkService.setRouter(routerController);
   deepLinkService.initDeepLinks();
 
+  // Handle initial deep link if app was launched with one
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (!kIsWeb) {
+      try {
+        final appLinks = AppLinks();
+        // Get the initial link if the app was launched from a link
+        final initialUri = await appLinks.getInitialLink();
+        if (initialUri != null) {
+          // The DeepLinkService will handle the initial link through uriLinkStream
+          debugPrint('App launched with initial link: $initialUri');
+        }
+      } catch (e) {
+        debugPrint('Error handling initial deep link: $e');
+      }
+    }
+  });
+
   final packageInfo = await PackageInfo.fromPlatform();
   final userAgent =
       'Floaty/${packageInfo.version} (${packageInfo.buildNumber})';
+
+  getIt.registerSingleton<Settings>(
+    Settings(),
+  );
+
+  getIt.registerSingleton<Whitelabels>(
+    Whitelabels(),
+  );
 
   getIt.registerSingleton<FPWebsockets>(
     FPWebsockets(
@@ -70,12 +105,12 @@ void main() async {
     LoginApi(),
   );
 
-  getIt.registerSingleton<Settings>(
-    Settings(),
-  );
-
   getIt.registerSingleton<UpdaterController>(
     UpdaterController(),
+  );
+
+  getIt.registerSingleton<DiscordRPCController>(
+    DiscordRPCController(),
   );
 
   // if (Platform.isAndroid) {
@@ -132,12 +167,12 @@ void main() async {
   }
 
   if (!Platform.isAndroid && !Platform.isIOS) {
-    // // Initialize single instance service
+    // Initialize single instance service
     final singleInstanceService = await SingleInstanceService.getInstance();
     await singleInstanceService.initialize();
 
-    // // Only continue if this is the first instance
-    // // Note: For Windows, this is handled in initialize()
+    // Only continue if this is the first instance
+    // Note: For Windows, this is handled in initialize()
     if (!Platform.isWindows) {
       final isFirstInstance = await singleInstanceService.isFirstInstance();
       if (!isFirstInstance) {

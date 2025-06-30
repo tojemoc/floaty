@@ -2,7 +2,10 @@ import 'dart:io';
 import 'dart:async';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
+import 'package:floaty/features/discordrpc/discord_rpc_controller.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
@@ -69,9 +72,12 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   MediaType? _currentMediaType;
   String? _currentTitle;
   String? _currentArtist;
+  String? _currentArtistImage;
   String? _currentThumbnailUrl;
   String? _currentPostId;
+  bool _currentDiscoverable = false;
   bool _live = false;
+  String _whitelabelName = '';
   dynamic _currentAttachment;
   VideoQuality? _currentQuality;
   List<VideoQuality> _availableQualities = [];
@@ -99,6 +105,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   int? get currentSubtitleTrackIndex => _currentSubtitleTrackIndex;
   String? get currentTitle => _currentTitle;
   String? get currentArtist => _currentArtist;
+  String? get currentArtistImage => _currentArtistImage;
   String? get currentThumbnailUrl => _currentThumbnailUrl;
   String? get currentPostId => _currentPostId;
   bool get currentLive => _live;
@@ -109,6 +116,8 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   MediaPlayerState get mediastate => state;
 
   void _setupPlayerListeners() {
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     _simplePip = SimplePip(
       onPipExited: () {
         if (_live) {
@@ -128,14 +137,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           .setProperty('profile', 'default');
     }
 
-    player.stream.position.listen((position) {
+    player.stream.position.listen((position) async {
       _position = position;
       if (_live != true) {
         if (_lastReportedPosition == null ||
             position.inMinutes > _lastReportedPosition!.inMinutes) {
           _lastReportedPosition = position;
 
-          fpApiRequests.progress(_currentAttachment.id!, position.inSeconds,
+          fpApiRequests.progress(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              _currentAttachment.id!,
+              position.inSeconds,
               _currentMediaType == MediaType.video ? 'video' : 'audio');
         }
       }
@@ -154,9 +166,88 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     });
 
     if (_live != true) {
-      player.stream.completed.listen((completed) {
-        fpApiRequests.progress(_currentAttachment.id!, _duration.inSeconds,
+      player.stream.completed.listen((completed) async {
+        fpApiRequests.progress(
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            _currentAttachment.id!,
+            _duration.inSeconds,
             _currentMediaType == MediaType.video ? 'video' : 'audio');
+      });
+    }
+
+    if (_currentArtist?.toLowerCase() != 'ecc squad' ||
+        _currentArtist?.toLowerCase() != 'eccsquad' ||
+        _currentDiscoverable) {
+      player.stream.duration.listen((duration) {
+        if (duration == Duration.zero) {
+          discordRPCController.updateRPC(
+              _whitelabelName,
+              _currentTitle ?? 'Unknown Title',
+              _currentArtist ?? 'Unknown Artist',
+              _currentArtistImage ?? flavor,
+              _currentThumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+              _currentPostId ?? '');
+        } else {
+          discordRPCController.updateRPC(
+            _whitelabelName,
+            _currentTitle ?? 'Unknown Title',
+            _currentArtist ?? 'Unknown Artist',
+            _currentArtistImage ?? flavor,
+            _currentThumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+            _currentPostId ?? '',
+            timestamps: RPCTimestamps(
+              start: DateTime.now().millisecondsSinceEpoch -
+                  player.state.position.inMilliseconds,
+              end: DateTime.now().millisecondsSinceEpoch +
+                  (duration - player.state.position).inMilliseconds,
+            ),
+          );
+        }
+      });
+
+      player.stream.playing.listen((playing) {
+        if (playing == false) {
+          discordRPCController.updateRPC(
+              _whitelabelName,
+              _currentTitle ?? 'Unknown Title',
+              _currentArtist ?? 'Unknown Artist',
+              _currentArtistImage ?? flavor,
+              _currentThumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+              _currentPostId ?? '');
+        } else {
+          discordRPCController.updateRPC(
+            _whitelabelName,
+            _currentTitle ?? 'Unknown Title',
+            _currentArtist ?? 'Unknown Artist',
+            _currentArtistImage ?? flavor,
+            _currentThumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+            _currentPostId ?? '',
+            timestamps: RPCTimestamps(
+              start: DateTime.now().millisecondsSinceEpoch -
+                  player.state.position.inMilliseconds,
+              end: DateTime.now().millisecondsSinceEpoch +
+                  (player.state.duration - player.state.position)
+                      .inMilliseconds,
+            ),
+          );
+        }
+      });
+
+      player.stream.position.listen((position) {
+        discordRPCController.updateRPC(
+          _whitelabelName,
+          _currentTitle ?? 'Unknown Title',
+          _currentArtist ?? 'Unknown Artist',
+          _currentArtistImage ?? flavor,
+          _currentThumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+          _currentPostId ?? '',
+          timestamps: RPCTimestamps(
+            start: DateTime.now().millisecondsSinceEpoch -
+                player.state.position.inMilliseconds,
+            end: DateTime.now().millisecondsSinceEpoch +
+                (player.state.duration - player.state.position).inMilliseconds,
+          ),
+        );
       });
     }
   }
@@ -176,8 +267,10 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
 
   Future<void> _ensureInitialized() async {
     packageInfo = await PackageInfo.fromPlatform();
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
 
     if (_isInitialized) return;
     _initializeCompleter = Completer<void>();
@@ -227,14 +320,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   }
 
   Future<void> setSource(
+    String whitelabelName,
     String url,
     MediaType type,
     bool live, {
     String? title,
     String? artist,
+    String? artistImage,
     String? postId,
     String? thumbnailUrl,
     dynamic attachment,
+    bool? discoverable,
     List<VideoQuality>? qualities,
     Map<String, String>? headers,
     Duration start = Duration.zero,
@@ -251,13 +347,16 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
 
     try {
       _log.info('Updating media source...');
+      _whitelabelName = whitelabelName;
       _live = live;
       _currentMediaUrl = url;
       _currentMediaType = type;
       _currentTitle = title;
       _currentArtist = artist;
+      _currentArtistImage = artistImage;
       _currentPostId = postId;
       _currentThumbnailUrl = thumbnailUrl;
+      _currentDiscoverable = discoverable ?? false;
       _currentAttachment = attachment;
       _currentTextTracks = textTracks;
       _currentSubtitleTrackIndex = textTracks?.isNotEmpty == true ? 0 : null;
@@ -298,12 +397,16 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
               .toList() ??
           [];
 
+      final whitelabel = whitelabels.getWhitelabel(_whitelabelName);
+
       final media = Media(
         url,
         httpHeaders: headers ??
             {
               'User-Agent': userAgent,
               'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
+              'Referer': 'https://www.${whitelabel.domain}/',
+              'Origin': 'https://www.${whitelabel.domain}',
             },
         start: start,
         extras: {
@@ -334,13 +437,9 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       if (type == MediaType.video) {
         _videoController = VideoController(player);
       }
-
-      // // Wait briefly for duration
-      // await Future.delayed(const Duration(milliseconds: 100));
-
       // Update media metadata
       if (type == MediaType.audio || type == MediaType.video) {
-        await _updateMediaMetadata(title, artist, thumbnailUrl);
+        await _updateMediaMetadata(title, artist, artistImage, thumbnailUrl);
       }
 
       _log.info('Source set successfully');
@@ -353,6 +452,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   Future<void> _updateMediaMetadata(
     String? title,
     String? artist,
+    String? artistImage,
     String? thumbnailUrl,
   ) async {
     if (!Platform.isWindows && audioHandler != null) {
@@ -384,6 +484,23 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         artist: artist,
         thumbnailUrl: thumbnailUrl,
       );
+    }
+
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
+
+    if (_currentArtist?.toLowerCase() != 'ecc squad' ||
+        _currentArtist?.toLowerCase() != 'eccsquad' ||
+        _currentDiscoverable ||
+        !Platform.isAndroid ||
+        !Platform.isIOS) {
+      discordRPCController.updateRPC(
+          _whitelabelName,
+          title ?? 'Unknown Title',
+          artist ?? 'Unknown Artist',
+          artistImage ?? flavor,
+          thumbnailUrl ?? 'https://floaty.fyi/assets/floaty.png',
+          _currentPostId ?? '');
     }
   }
 
@@ -531,6 +648,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         break;
       case MediaPlayerState.none:
         await stop();
+        discordRPCController.clearRPC();
         break;
     }
   }
@@ -593,6 +711,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       await audioHandler?.dispose();
     }
     await windowsControls?.dispose();
+    discordRPCController.clearRPC();
     super.dispose();
   }
 
@@ -604,5 +723,6 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       await audioHandler?.session?.setActive(false);
     }
     await windowsControls?.stop();
+    discordRPCController.clearRPC();
   }
 }

@@ -321,6 +321,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.2"
+  cloudflare_turnstile:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: HEAD
+      resolved-ref: "73265699359acb03eb325b1d167fd4506fdbe6a8"
+      url: "https://github.com/floatyfp/cloudflare_turnstile"
+    source: git
+    version: "3.2.1"
   code_builder:
     dependency: transitive
     description:
@@ -478,6 +487,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
+  flutter_discord_rpc:
+    dependency: "direct main"
+    description:
+      name: flutter_discord_rpc
+      sha256: "9363a803863d56fd89c0a21639c70b126245fcbafaeb0a3d091e7ac06951d03f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   flutter_highlight:
     dependency: transitive
     description:
@@ -486,6 +503,70 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.0"
+  flutter_inappwebview:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview
+      sha256: a8f5c9dd300a8cc7fde7bb902ae57febe95e9269424e4d08d5a1a56214e1e6ff
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.2.0-beta.2"
+  flutter_inappwebview_android:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_android
+      sha256: "2427e89d9c7b00cc756f800932d7ab8f3272d3fbc71544e1aedb3dbc17dae074"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0-beta.2"
+  flutter_inappwebview_internal_annotations:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_internal_annotations
+      sha256: "787171d43f8af67864740b6f04166c13190aa74a1468a1f1f1e9ee5b90c359cd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0"
+  flutter_inappwebview_ios:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_ios
+      sha256: "7ff65d7408e453f9a4ff38f74673aeec8cae824cba8276b4b77350262bfe356a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0-beta.2"
+  flutter_inappwebview_macos:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_macos
+      sha256: be8b8ab0100c94ec9fc079a4d48b2bc8dd1a8b4c2647da34f1d3dae93cd5f88a
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0-beta.2"
+  flutter_inappwebview_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_platform_interface
+      sha256: "2c99bf767900ba029d825bc6f494d30169ee83cdaa038d86e85fe70571d0a655"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.0-beta.2"
+  flutter_inappwebview_web:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_web
+      sha256: "6c4bb61ea9d52e51d79ea23da27c928d0430873c04ad380df39c1ef442b11f4e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0-beta.2"
+  flutter_inappwebview_windows:
+    dependency: transitive
+    description:
+      name: flutter_inappwebview_windows
+      sha256: "0ff241f814b7caff63b9632cf858b6d3d9c35758040620a9745e5f6e9dd94d74"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.0-beta.2"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:
@@ -937,7 +1018,7 @@ packages:
     source: hosted
     version: "3.2.0"
   path:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path
       sha256: "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"
@@ -1080,6 +1161,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.0.1"
+  process_run:
+    dependency: "direct main"
+    description:
+      name: process_run
+      sha256: "3d5335d17003a7c2fd5148be2d313f5b84244ab2e625162fdd44b4aaa48bea66"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.13.3+1"
   pub_semver:
     dependency: transitive
     description:
@@ -1648,7 +1737,7 @@ packages:
     source: hosted
     version: "0.2.0"
   win32:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: win32
       sha256: "329edf97fdd893e0f1e3b9e88d6a0e627128cc17cc316a8d67fda8f1451178ba"

@@ -57,7 +57,7 @@ class BrowseScreenState extends ConsumerState<BrowseScreen> {
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(12),
             child: Center(
-              child: Container(
+              child: SizedBox(
                 width: width > 1500 ? 1500 : double.infinity,
                 child: Column(
                   children: rows,

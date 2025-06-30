@@ -11,6 +11,7 @@ import 'package:floaty/features/player/theme/audio_controls_theme.dart';
 import 'package:go_router/go_router.dart';
 
 class MediaPlayerWidget extends ConsumerStatefulWidget {
+  final String whitelabelName;
   final String mediaUrl;
   final MediaType mediaType;
   final bool live;
@@ -20,13 +21,16 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
   final BuildContext contextBuild;
   final String? title;
   final String? artist;
+  final String? artistImage;
   final String? postId;
   final String? artworkUrl;
+  final bool discoverable;
   final MediaPlayerState initialState;
   final List<Map<String, dynamic>>? textTracks;
 
   const MediaPlayerWidget({
     super.key,
+    required this.whitelabelName,
     required this.mediaUrl,
     required this.mediaType,
     required this.attachment,
@@ -36,8 +40,10 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
     required this.startFrom,
     required this.title,
     required this.artist,
+    required this.artistImage,
     required this.postId,
     required this.artworkUrl,
+    required this.discoverable,
     required this.live,
     this.textTracks,
   });
@@ -61,6 +67,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
     if (Platform.isAndroid) _pipAvailable = await SimplePip.isPipAvailable;
     _mediaService = ref.read(mediaPlayerServiceProvider.notifier);
     await _mediaService.setSource(
+      widget.whitelabelName,
       widget.mediaUrl,
       widget.mediaType,
       widget.live,
@@ -69,8 +76,10 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
       start: Duration(seconds: widget.startFrom),
       title: widget.title,
       artist: widget.artist,
+      artistImage: widget.artistImage,
       postId: widget.postId,
       thumbnailUrl: widget.artworkUrl,
+      discoverable: widget.discoverable,
       textTracks: widget.textTracks,
     );
     await _mediaService.changeState(widget.initialState);

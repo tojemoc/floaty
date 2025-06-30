@@ -1,5 +1,6 @@
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
@@ -39,7 +40,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return [];
     if (creatorIds.isNotEmpty) return creatorIds;
     try {
-      creatorIds = await fpApiRequests.getSubscribedCreatorsIds().first;
+      creatorIds = await fpApiRequests
+          .getSubscribedCreatorsIds(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName)
+          .first;
     } catch (error) {
       creatorIds = [];
     }
@@ -55,11 +59,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ContentCreatorListV3Response? home;
       if (lastElements.isNotEmpty) {
         home = await fpApiRequests.getMultiCreatorVideoFeed(
-            creatorIds, _pageSize,
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            creatorIds,
+            _pageSize,
             lastElements: lastElements);
       } else {
-        home =
-            await fpApiRequests.getMultiCreatorVideoFeed(creatorIds, _pageSize);
+        home = await fpApiRequests.getMultiCreatorVideoFeed(
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            creatorIds,
+            _pageSize);
       }
 
       if (!mounted) return [];
@@ -67,13 +75,22 @@ class _HomeScreenState extends State<HomeScreen> {
       final newPosts = home.blogPosts ?? [];
       lastElements = home.lastElements ?? [];
 
+      if (newPosts.length < _pageSize) {
+        _pagingController.value = _pagingController.value.copyWith(
+          hasNextPage: false,
+          isLoading: false,
+        );
+      }
+
       List<String> blogPostIds = newPosts
           .map((post) => post.id)
           .where((id) => id != null)
           .cast<String>()
           .toList();
       List<GetProgressResponse> progressResponses =
-          await fpApiRequests.getVideoProgress(blogPostIds);
+          await fpApiRequests.getVideoProgress(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              blogPostIds);
 
       if (!mounted) return [];
 
@@ -103,7 +120,9 @@ class _HomeScreenState extends State<HomeScreen> {
       body: RefreshIndicator(
         onRefresh: () async {
           lastElements = [];
-          _pagingController.refresh();
+          if (mounted) {
+            _pagingController.refresh();
+          }
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),

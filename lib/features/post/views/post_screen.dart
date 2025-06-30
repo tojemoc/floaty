@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:floaty/features/post/components/blog_post_card.dart';
 import 'package:floaty/features/post/components/comment_holder.dart';
 import 'package:floaty/features/post/components/expandable_description.dart';
 import 'package:floaty/features/post/components/state_card.dart';
 
 import 'package:floaty/shared/views/error_screen.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/post/repositories/post_provider.dart';
@@ -97,8 +100,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   Future<void> initUserAgent() async {
     packageInfo = await PackageInfo.fromPlatform();
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
   }
 
   //whenplane intergration
@@ -167,6 +172,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       if (selectedMediaType == MediaType.video ||
           selectedMediaType == MediaType.audio) {
         fpApiRequests.progress(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
           _selectedAttachmentId ?? '',
           _mediaService.currentPosition.inSeconds,
           selectedMediaType.name,
@@ -206,6 +212,25 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     _mediaService = ref.watch(mediaPlayerServiceProvider.notifier);
     final postState = ref.watch(postProvider(widget.postId));
     menuItems = ref.watch(menuItemsProvider);
+
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        while (!postState.isLoading) {
+          if (postState.post?.creator?.title?.toLowerCase() == 'eccsquad' &&
+                  await settings.getBool('discord_rpc') == false &&
+                  await settings.getBool('eccsquadwarningseen') == false ||
+              postState.post?.creator?.title?.toLowerCase() == 'ecc squad' &&
+                  await settings.getBool('discord_rpc') == false &&
+                  await settings.getBool('eccsquadwarningseen') == false) {
+            context.pushReplacement('/ecc-warning/${widget.postId}');
+          } else if (postState.post?.creator?.discoverable == false) {
+            context.pushReplacement('/ecc-warning/${widget.postId}',
+                extra: 'discoverable');
+          }
+          break;
+        }
+      });
+    }
 
     return postState.isLoading
         ? const Center(child: CircularProgressIndicator())
@@ -354,12 +379,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       if (selectedAttachment != null) {
         if (selectedAttachment is VideoAttachmentModel) {
           final res = await fpApiRequests.getDelivery(
-              'onDemand', _selectedAttachmentId!);
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              'onDemand',
+              _selectedAttachmentId!);
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, true);
 
-          final prores =
-              await fpApiRequests.getContent('video', _selectedAttachmentId!);
+          final prores = await fpApiRequests.getContent(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              'video',
+              _selectedAttachmentId!);
           final decodedpro = jsonDecode(prores);
           if (decodedpro['progress'] != null) {
             progress = decodedpro['progress'];
@@ -388,12 +417,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         } else if (selectedAttachment is AudioAttachmentModel) {
           final res = await fpApiRequests.getDelivery(
-              'onDemand', _selectedAttachmentId!);
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              'onDemand',
+              _selectedAttachmentId!);
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, false);
 
-          final prores =
-              await fpApiRequests.getContent('audio', _selectedAttachmentId!);
+          final prores = await fpApiRequests.getContent(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              'audio',
+              _selectedAttachmentId!);
           final decodedpro = jsonDecode(prores);
           if (decodedpro['progress'] != null) {
             progress = decodedpro['progress'];
@@ -421,8 +454,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             mediaUrl = defaultQuality.url;
           }
         } else if (selectedAttachment is PictureAttachmentModel) {
-          final res =
-              await fpApiRequests.getContent('picture', _selectedAttachmentId!);
+          final res = await fpApiRequests.getContent(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              'picture',
+              _selectedAttachmentId!);
           final decoded = jsonDecode(res);
           mediaUrl = decoded['imageFiles'][0]['path'];
         }
@@ -435,6 +470,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           children: [
             if (context.mounted)
               MediaPlayerWidget(
+                whitelabelName:
+                    (await whitelabels.getSelectedWhitelabel()).friendlyName,
                 //welcome to making dart shut up
                 contextBuild: context.mounted ? context : context,
                 mediaUrl: mediaUrl!,
@@ -446,6 +483,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 startFrom: progress,
                 textTracks: textTrack.isEmpty ? null : textTrack,
                 live: false,
+                discoverable: ref
+                        .read(postProvider(widget.postId))
+                        .post
+                        ?.creator
+                        ?.discoverable ??
+                    false,
                 title: ref.read(postProvider(widget.postId)).post?.title ??
                     'Unknown Title',
                 artist: ref
@@ -454,6 +497,13 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                         ?.channel
                         ?.title ??
                     'Unknown Creator',
+                artistImage: ref
+                        .read(postProvider(widget.postId))
+                        .post
+                        ?.channel
+                        ?.icon
+                        ?.path ??
+                    '',
                 postId: widget.postId,
                 artworkUrl: ref
                         .read(postProvider(widget.postId))
@@ -540,8 +590,13 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
       // If only one attachment
       return MediaPlayerWidget(
+        whitelabelName:
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
         contextBuild: context.mounted ? context : context,
         mediaUrl: mediaUrl!,
+        discoverable:
+            ref.read(postProvider(widget.postId)).post?.creator?.discoverable ??
+                false,
         live: false,
         mediaType: selectedMediaType,
         attachment: selectedAttachment,
@@ -556,6 +611,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             'Unknown Title',
         artist: ref.read(postProvider(widget.postId)).post?.channel?.title ??
             'Unknown Creator',
+        artistImage:
+            ref.read(postProvider(widget.postId)).post?.channel?.icon?.path ??
+                '',
         postId: widget.postId,
         artworkUrl:
             ref.read(postProvider(widget.postId)).post!.thumbnail?.path ?? '',
@@ -569,30 +627,58 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   }
 
   Future<List<VideoQuality>> fetchVideoQualities(
-      Map<String, dynamic> deliveryResponse, bool video) async {
+      Map<String, dynamic> deliveryResponse, bool video,
+      {bool v2 = false}) async {
     List<VideoQuality> qualities = [];
 
-    // Extract base URL from origins
-    String baseUrl = deliveryResponse['groups'][0]['origins'][0]['url'];
+    if (!v2) {
+      // Extract base URL from origins
+      String baseUrl = deliveryResponse['groups'][0]['origins'][0]['url'];
 
-    // Access the groups and their variants
-    for (var group in deliveryResponse['groups']) {
-      for (var variant in group['variants']) {
-        // Check if the variant is enabled
-        if (variant['enabled']) {
-          if (video = true) {
-            qualities.add(VideoQuality(
-              url:
-                  '$baseUrl${variant['url']}', // Concatenate base URL with the variant URL
-              label: variant['label'],
-            ));
-          } else {
-            qualities.add(VideoQuality(
-              url:
-                  '$baseUrl${variant['url']}', // Concatenate base URL with the variant URL
-              label: variant['label'],
-            ));
+      // Access the groups and their variants
+      for (var group in deliveryResponse['groups']) {
+        for (var variant in group['variants']) {
+          // Check if the variant is enabled
+          if (variant['enabled']) {
+            if (video = true) {
+              qualities.add(VideoQuality(
+                url:
+                    '$baseUrl${variant['url']}', // Concatenate base URL with the variant URL
+                label: variant['label'],
+              ));
+            } else {
+              qualities.add(VideoQuality(
+                url:
+                    '$baseUrl${variant['url']}', // Concatenate base URL with the variant URL
+                label: variant['label'],
+              ));
+            }
           }
+        }
+      }
+    } else {
+      // Extract base URL from origins
+      String baseUrl = deliveryResponse['cdn'];
+
+      // Access the groups and their variants
+      for (var quality in deliveryResponse['resource']['data']
+          ['qualityLevels']) {
+        final qualityName = quality['name'];
+        final qualityParams = deliveryResponse['resource']['data']
+            ['qualityLevelParams'][qualityName];
+
+        if (qualityParams != null) {
+          final pathParam = qualityParams['2'];
+          final token = qualityParams['4'];
+
+          final uri = deliveryResponse['resource']['uri']
+              .replaceAll('{qualityLevelParams.2}', pathParam)
+              .replaceAll('{qualityLevelParams.4}', token);
+
+          qualities.add(VideoQuality(
+            url: '$baseUrl$uri',
+            label: quality['label'],
+          ));
         }
       }
     }
@@ -649,7 +735,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       } else {
         downloadNotifier.setLoading();
         final data = await fpApiRequests.getDeliveryv2(
-            'download', _selectedAttachmentId ?? '');
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            'download',
+            _selectedAttachmentId ?? '');
 
         if (data != 'Response StatusCode: 429, Body: error code: 1015') {
           final dedata = jsonDecode(data);
@@ -1159,6 +1247,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                             post.text ?? '',
                             key: UniqueKey(),
                             factoryBuilder: () => _PostWidgetFactory(),
+                            textStyle: TextStyle(
+                              color: theme.colorScheme.onSurface,
+                            ),
                           ),
                         ),
                       ),
@@ -1298,20 +1389,24 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                           ),
                           const SizedBox(width: 8),
                           TextButton(
-                            onPressed:
-                                _currentLength >= 3 && _currentLength <= 1500
-                                    ? () async {
-                                        final text = _commentController.text;
-                                        _commentController.clear();
-                                        final comment = await fpApiRequests
-                                            .comment(post.id ?? '', text);
-                                        if (comment != null) {
-                                          setState(() {
-                                            _comments.insert(0, comment);
-                                          });
-                                        }
-                                      }
-                                    : null,
+                            onPressed: _currentLength >= 3 &&
+                                    _currentLength <= 1500
+                                ? () async {
+                                    final text = _commentController.text;
+                                    _commentController.clear();
+                                    final comment = await fpApiRequests.comment(
+                                        (await whitelabels
+                                                .getSelectedWhitelabel())
+                                            .friendlyName,
+                                        post.id ?? '',
+                                        text);
+                                    if (comment != null) {
+                                      setState(() {
+                                        _comments.insert(0, comment);
+                                      });
+                                    }
+                                  }
+                                : null,
                             style: TextButton.styleFrom(
                               splashFactory: InkRipple.splashFactory,
                               overlayColor: Colors.grey[800],
@@ -1356,7 +1451,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               hint: const Text(
                 'Sort Comments',
               ),
-              dropdownColor: Colors.grey[800],
               icon: const Icon(Icons.sort),
               underline: Container(),
               items: [
@@ -1437,6 +1531,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                             dynamic items;
                             if (fetchafter != '0') {
                               items = await fpApiRequests.getComments(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
                                 widget.postId,
                                 _pageSize,
                                 sortBy,
@@ -1445,6 +1541,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               );
                             } else {
                               items = await fpApiRequests.getComments(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
                                 widget.postId,
                                 _pageSize,
                                 sortBy,
@@ -1504,6 +1602,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       dynamic items;
       if (fetchafter != '0') {
         items = await fpApiRequests.getComments(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
           widget.postId,
           _pageSize,
           sortBy,
@@ -1512,6 +1611,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         );
       } else {
         items = await fpApiRequests.getComments(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
           widget.postId,
           _pageSize,
           sortBy,
@@ -1589,4 +1689,36 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   }
 }
 
-class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {}
+class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {
+  @override
+  void parse(BuildTree tree) {
+    // Remove style attributes that contain color-related styles
+    final element = tree.element;
+    if (element.attributes.containsKey('style')) {
+      final style = element.attributes['style']!;
+      final newStyle = style
+          .split(';')
+          .where((prop) =>
+              !prop.trim().toLowerCase().startsWith('color:') &&
+              !prop.trim().toLowerCase().startsWith('background-color:') &&
+              !prop.trim().toLowerCase().startsWith('border-color:'))
+          .join(';')
+          .trim();
+
+      if (newStyle.isEmpty) {
+        element.attributes.remove('style');
+      } else {
+        element.attributes['style'] = newStyle;
+      }
+    }
+
+    // Process any inline styles in the HTML
+    if (element.attributes.containsKey('color') ||
+        element.attributes.containsKey('bgcolor')) {
+      element.attributes.remove('color');
+      element.attributes.remove('bgcolor');
+    }
+
+    super.parse(tree);
+  }
+}

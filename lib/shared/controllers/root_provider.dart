@@ -1,3 +1,4 @@
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -13,7 +14,7 @@ class RootState {
   final UserSelfV3Response? user;
   final bool isLoading;
   final Widget appBarTitle;
-  final List<Widget>? appBarActions;
+  final List<Widget> appBarActions;
   final Widget? appBarLeading;
   final StreamSubscription? creatorSubscription;
   final bool isCollapsed;
@@ -25,7 +26,7 @@ class RootState {
     this.user,
     this.isLoading = true,
     this.appBarTitle = const Text('Floaty'),
-    this.appBarActions,
+    required this.appBarActions,
     this.appBarLeading,
     this.creatorSubscription,
     required this.isCollapsed,
@@ -66,7 +67,7 @@ class RootNotifier extends StateNotifier<RootState> {
             user: null,
             isLoading: true,
             appBarTitle: const Text('Floaty'),
-            appBarActions: null,
+            appBarActions: [],
             appBarLeading: null,
             creatorSubscription: null,
             isCollapsed: false,
@@ -77,11 +78,19 @@ class RootNotifier extends StateNotifier<RootState> {
   Future<void> loadsidebar() async {
     if (!mounted) return;
     try {
-      fpApiRequests.getSubscribedCreators().listen((fetchedCreators) {
+      fpApiRequests
+          .getSubscribedCreators(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+      )
+          .listen((fetchedCreators) {
         if (!mounted) return;
         state = state.copyWith(creators: fetchedCreators);
       });
-      fpApiRequests.getUser().listen((fetchedUser) {
+      fpApiRequests
+          .getUser(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+      )
+          .listen((fetchedUser) {
         if (!mounted) return;
         state = state.copyWith(user: fetchedUser, isLoading: false);
       }, onError: (error) {

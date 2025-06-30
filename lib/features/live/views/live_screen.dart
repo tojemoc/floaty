@@ -2,11 +2,14 @@ import 'dart:convert';
 import 'dart:core';
 
 import 'package:dio/dio.dart';
+import 'package:floaty/features/player/models/video_quality.dart';
 import 'package:floaty/features/whenplane/components/compact_holder.dart';
 import 'package:floaty/features/whenplane/views/whenplane.dart';
 
 import 'package:floaty/features/live/controllers/live_status_provider.dart';
 import 'package:floaty/features/live/components/live_chat.dart';
+import 'package:floaty/settings.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:resizable_widget/resizable_widget.dart';
@@ -37,12 +40,17 @@ class LiveVideoWidget extends ConsumerStatefulWidget {
 
 class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
   bool offline = true;
+  bool isStreamLoading = true;
+  String? mediaUrl;
+  String? masterUrl;
+  List<VideoQuality> availableStreamQualities = [];
+  WhiteLabel? whiteLabel;
   bool isChat = false;
   bool isWhenplane = false;
   late CreatorModelV3? realCreatorInfo;
-  String? mediaUrl;
   late MediaPlayerService mediaService;
   Map<String, dynamic>? fpstats;
+  Map<String, dynamic>? aggregateData;
   bool isFPSTATSloading = true;
 
   @override
@@ -85,17 +93,21 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
       mediaService = ref.read(mediaPlayerServiceProvider.notifier);
     }
     final delivery = await fpApiRequests.getDelivery(
-        'live', widget.creatorInfo.liveStream?.id ?? '');
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        'live',
+        widget.creatorInfo.liveStream?.id ?? '');
     final deliveryData = jsonDecode(delivery);
-    mediaUrl =
+    masterUrl =
         '${deliveryData['groups'][0]['origins'][0]['url']}${deliveryData['groups'][0]['variants'][0]['url']}';
     while (offline == true) {
       final response = await Dio(BaseOptions(validateStatus: (status) => true))
-          .get(mediaUrl!);
+          .get(masterUrl!);
       if (response.statusCode == 200) {
         if (mounted) {
           realCreatorInfo = await fpApiRequests
-              .getCreator(urlname: widget.creatorInfo.urlname)
+              .getCreator(
+                  (await whitelabels.getSelectedWhitelabel()).friendlyName,
+                  urlname: widget.creatorInfo.urlname)
               .first;
           if (isMrTechTips) {
             final stats = await whenPlaneIntegration.floatplanestats();
@@ -106,28 +118,128 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
           setState(() {
             offline = false;
           });
+          loadStream(masterUrl!);
         }
       }
       await Future.delayed(const Duration(seconds: 5));
     }
     while (offline == false) {
       final response = await Dio(BaseOptions(validateStatus: (status) => true))
-          .get(mediaUrl!);
+          .get(masterUrl!);
       if (response.statusCode == 404) {
         if (mounted) {
           if (isMrTechTips) {
             final stats = await whenPlaneIntegration.floatplanestats();
+            final aggregate = await whenPlaneIntegration.aggregate();
             setState(() {
               fpstats = jsonDecode(stats);
+              aggregateData = jsonDecode(aggregate);
             });
           }
           setState(() {
             offline = true;
+            isStreamLoading = true;
           });
           checker();
         }
       }
       await Future.delayed(const Duration(minutes: 1));
+    }
+  }
+
+  void loadStream(String masterUrl) async {
+    if (mounted) {
+      setState(() {
+        isStreamLoading = true;
+      });
+    }
+
+    try {
+      final response = await Dio().get(masterUrl);
+      final qualities = await fetchStreamQualities(response.data, masterUrl);
+      String mediaurl;
+
+      String? preferredQuality = await settings.getKey('preferred_quality');
+
+      if (preferredQuality.isNotEmpty) {
+        final selected = qualities.firstWhere(
+          (q) => q.label == preferredQuality,
+          orElse: () => qualities.first,
+        );
+        mediaurl = selected.url;
+      } else {
+        // Prefer 1080p if available, fallback otherwise
+        final fallback = qualities.firstWhere(
+          (q) => q.label == '1920x1080' || q.label == '1080p',
+          orElse: () => qualities.first,
+        );
+        mediaurl = fallback.url;
+      }
+
+      final whitelabel = await whitelabels.getSelectedWhitelabel();
+      if (mounted) {
+        setState(() {
+          whiteLabel = whitelabel;
+          mediaUrl = mediaurl;
+          availableStreamQualities = qualities;
+          isStreamLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        isStreamLoading = true;
+      });
+    }
+  }
+
+  Future<List<VideoQuality>> fetchStreamQualities(
+      String playlist, String masterUrl) async {
+    try {
+      final lines = LineSplitter.split(playlist).toList();
+      final qualities = <VideoQuality>[];
+
+      final nameMap = <String, String>{};
+
+      for (final line in lines) {
+        if (line.startsWith('#EXT-X-MEDIA') && line.contains('TYPE=VIDEO')) {
+          final nameMatch = RegExp(r'NAME="([^"]+)"').firstMatch(line);
+          final groupMatch = RegExp(r'GROUP-ID="([^"]+)"').firstMatch(line);
+
+          if (nameMatch != null && groupMatch != null) {
+            nameMap[groupMatch.group(1)!] = nameMatch.group(1)!;
+          }
+        }
+      }
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i];
+
+        if (line.startsWith('#EXT-X-STREAM-INF')) {
+          final videoMatch = RegExp(r'VIDEO="([^"]+)"').firstMatch(line);
+          final urlLine = lines[i + 1];
+
+          if (videoMatch != null) {
+            final videoGroup = videoMatch.group(1)!;
+            final label = nameMap[videoGroup] ?? videoGroup;
+
+            qualities.add(VideoQuality(
+              label: label,
+              url: urlLine,
+            ));
+          }
+        }
+      }
+
+      qualities.insert(
+          0,
+          VideoQuality(
+            label: 'Auto',
+            url: masterUrl,
+          ));
+
+      return qualities;
+    } catch (e) {
+      return [];
     }
   }
 
@@ -248,22 +360,31 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
                                 v: true,
                               )
                         : offlineScreen()
-                    : MediaPlayerWidget(
-                        contextBuild: context,
-                        mediaUrl: mediaUrl!,
-                        mediaType: MediaType.video,
-                        attachment: null,
-                        qualities: null,
-                        initialState: MediaPlayerState.main,
-                        startFrom: 0,
-                        live: true,
-                        title: realCreatorInfo?.liveStream?.title ??
-                            'Unknown Title',
-                        artist: realCreatorInfo?.title ?? 'Unknown Creator',
-                        postId: realCreatorInfo?.urlname ?? '',
-                        artworkUrl:
-                            realCreatorInfo?.liveStream?.thumbnail?.path ?? '',
-                      ),
+                    : isStreamLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(),
+                          )
+                        : MediaPlayerWidget(
+                            whitelabelName: whiteLabel!.friendlyName,
+                            contextBuild: context,
+                            mediaUrl: mediaUrl!,
+                            mediaType: MediaType.video,
+                            attachment: null,
+                            qualities: availableStreamQualities,
+                            initialState: MediaPlayerState.main,
+                            startFrom: 0,
+                            discoverable:
+                                realCreatorInfo?.discoverable ?? false,
+                            live: true,
+                            title: realCreatorInfo?.liveStream?.title ??
+                                'Unknown Title',
+                            artist: realCreatorInfo?.title ?? 'Unknown Creator',
+                            artistImage: realCreatorInfo?.icon?.path ?? '',
+                            postId: realCreatorInfo?.urlname ?? '',
+                            artworkUrl:
+                                realCreatorInfo?.liveStream?.thumbnail?.path ??
+                                    '',
+                          ),
               ),
               if (isChat)
                 SizedBox(
@@ -338,7 +459,7 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
                                             : 'Live'
                                         : offline
                                             ? 'Offline for ${ref.watch(liveStatusProvider(fpstats?["lastLive"]))}'
-                                            : 'Live for ${ref.watch(liveStatusProvider(fpstats?["started"]))}',
+                                            : 'Live for ${ref.watch(liveStatusProvider(fpstats?["started"] ?? aggregateData?["started"]))}',
                                     style: TextStyle(
                                       color: offline
                                           ? Colors.grey[400]
@@ -468,7 +589,10 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
   }
 
   void init() async {
-    res = await fpApiRequests.getCreator(urlname: widget.channelName).first;
+    res = await fpApiRequests
+        .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
+            urlname: widget.channelName)
+        .first;
     setState(() {
       isLoading = false;
     });

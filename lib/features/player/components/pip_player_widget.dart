@@ -1,3 +1,4 @@
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,10 +33,12 @@ class PipPlayerWidget extends ConsumerWidget {
                 topButtonBar: [
                   MaterialCustomButton(
                     icon: Icon(Icons.arrow_back),
-                    onPressed: () {
+                    onPressed: () async {
                       mediaService.pipfalse();
                       if (!live) {
                         fpApiRequests.iprogress(
+                          (await whitelabels.getSelectedWhitelabel())
+                              .friendlyName,
                           mediaService.currentAttachmentId ?? '',
                           mediaService.currentPosition.inSeconds,
                           mediaService.selectedMediaName ?? '',
@@ -86,10 +89,12 @@ class PipPlayerWidget extends ConsumerWidget {
                 topButtonBar: [
                   MaterialCustomButton(
                     icon: Icon(Icons.arrow_back),
-                    onPressed: () {
+                    onPressed: () async {
                       mediaService.pipfalse();
                       if (!live) {
                         fpApiRequests.iprogress(
+                          (await whitelabels.getSelectedWhitelabel())
+                              .friendlyName,
                           mediaService.currentAttachmentId ?? '',
                           mediaService.currentPosition.inSeconds,
                           mediaService.selectedMediaName ?? '',
@@ -142,8 +147,9 @@ class PipPlayerWidget extends ConsumerWidget {
               ),
             )
           : PipWidget(
-              onPipExited: () {
+              onPipExited: () async {
                 fpApiRequests.iprogress(
+                  (await whitelabels.getSelectedWhitelabel()).friendlyName,
                   mediaService.currentAttachmentId ?? '',
                   mediaService.currentPosition.inSeconds,
                   mediaService.selectedMediaName ?? '',

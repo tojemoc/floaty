@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dart';
 import 'package:floaty/settings.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:simple_icons/simple_icons.dart';
@@ -22,9 +23,10 @@ class WhenplaneScreen extends StatefulWidget {
 class _WhenplaneScreenState extends State<WhenplaneScreen> {
   // Countdown timer
   Timer? _timer;
+  Timer? _phraseTimer;
   String phrase = whenPlaneIntegration.newPhrase();
   late String jsonData;
-  late String latenessData;
+  String? latenessData;
   bool isLoading = true;
 
   bool votingrevealed = true;
@@ -47,6 +49,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
     loadSelectedVote();
     websocketStart();
     initFetch();
+    _startTimer();
 
     // Calculate total votes
     totalVotes = votes.fold(0, (sum, vote) => sum + (vote['votes'] as int));
@@ -55,12 +58,25 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   void initFetch() async {
     jsonData = await whenPlaneIntegration.aggregate();
     latenessData = await whenPlaneIntegration.lateness();
-    setState(() {
-      isLoading = false;
-      isAfterStartTime = nearestWan['isNext']
-          ? nearestWan['timeUntil'] > Duration.zero
-          : nearestWan['timeUntil'] < Duration.zero;
-    });
+    if (jsonData is Map ||
+        latenessData is Map ||
+        jsonDecode(jsonData)['error'] != null ||
+        jsonDecode(latenessData ?? '')['error'] != null) {
+      if (mounted) {
+        setState(() {
+          error = true;
+        });
+      }
+    } else {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          setState(() {
+            error = false;
+            isLoading = false;
+          });
+        });
+      }
+    }
   }
 
   void websocketStart() async {
@@ -69,7 +85,10 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
       if (message != 'pong') {
         if (mounted) {
           setState(() {
+            error = false;
+            isLoading = false;
             jsonData = message;
+            pjsonData = jsonDecode(message);
           });
         }
       }
@@ -77,15 +96,28 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   }
 
   Future<void> loadSelectedVote() async {
-    settings.getKey('votedname').then((value) {
-      setState(() {
-        selectedVote = value;
+    final votedDate = await settings.getKey('votedDate');
+    final wNearestWan = whenPlaneIntegration.getNearestWan();
+    if (votedDate.isNotEmpty &&
+        (wNearestWan['date'] as DateTime)
+            .isAtSameMomentAs(DateTime.parse(votedDate))) {
+      settings.getKey('votedname').then((value) {
+        setState(() {
+          selectedVote = value;
+        });
       });
-    });
+    } else {
+      setState(() {
+        selectedVote = null;
+        settings.setKey(
+            'votedDate', (nearestWan['date'] as DateTime).toIso8601String());
+        settings.setKey('votedname', '');
+      });
+    }
   }
 
   late dynamic platenessData;
-  late dynamic pjsonData;
+  dynamic pjsonData;
 
   Map<String, dynamic> nearestWan = whenPlaneIntegration.getNearestWan();
   bool isMainLate = false;
@@ -95,49 +127,79 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   String sscountdownText = '';
   bool isSSlate = false;
   bool showPlayed = false;
+
+  bool error = false;
+
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (isLoading) return;
-      bool isPreShow = pjsonData != null
-          ? !(pjsonData['youtube']?['isLive'] ?? false) &&
-              (pjsonData['twitch']?['isWAN'] ??
-                  false || (pjsonData['floatplane']?['isWAN'] ?? false))
-          : false;
+      if (pjsonData == null) return;
 
-      bool isMainShow = pjsonData != null
-          ? (pjsonData['youtube']?['isWAN'] ?? false) &&
-              (pjsonData['youtube']?['isLive'] ?? false)
-          : false;
-      if (pjsonData['specialStream'] != false &&
-          pjsonData['specialStream'] != null) {
-        final timeUntil = whenPlaneIntegration
-            .getTimeUntil(DateTime.parse(pjsonData['specialStream']?['start']));
-
-        sscountdownText = timeUntil['string'];
-        isSSlate = timeUntil['late'];
+      if (pjsonData['specialStream'] != null &&
+          pjsonData['specialStream'] is Map &&
+          pjsonData['specialStream']['start'] != null) {
+        final specialStreamStart =
+            DateTime.parse(pjsonData['specialStream']['start']);
+        if (mounted) {
+          setState(() {
+            isSSlate = DateTime.now().isAfter(specialStreamStart);
+            final timeUntil =
+                whenPlaneIntegration.getTimeUntil(specialStreamStart);
+            sscountdownText = timeUntil['string'];
+          });
+        }
       }
+
+      final isPreShow = pjsonData != null &&
+          !(pjsonData['youtube']?['isLive'] ?? false) &&
+          (pjsonData['twitch']?['isWAN'] ??
+              false || pjsonData['floatplane']?['isWAN'] ??
+              false);
+
+      final isMainShow = pjsonData != null &&
+          (pjsonData['youtube']?['isWAN'] ?? false) &&
+          (pjsonData['youtube']?['isLive'] ?? false);
+
       if (isMainShow || isPreShow) {
-        if (!isMainShow && isPreShow && pjsonData['floatplane']?['isLive']) {
+        if (!isMainShow &&
+            isPreShow &&
+            pjsonData['twitch']?['isLive'] == true) {
           final mainScheduledStart =
               whenPlaneIntegration.getClosestWan(DateTime.now());
-          setState(() {
-            isMainLate = true;
-            countdownString =
-                whenPlaneIntegration.getTimeUntil(mainScheduledStart)['string'];
-          });
-        } else {
+          if (mounted) {
+            setState(() {
+              isMainLate = true;
+              final timeUntil =
+                  whenPlaneIntegration.getTimeUntil(mainScheduledStart);
+              countdownString = timeUntil['string'];
+            });
+          }
+        } else if (mounted) {
           setState(() {
             isMainLate = false;
           });
         }
 
-        DateTime started = DateTime.parse(pjsonData['floatplane']?['started'] ??
-            pjsonData['youtube']?['started'] ??
-            '');
+        // Use the first available started time from youtube, twitch, or floatplane
+        final started = pjsonData['youtube']?['started'] ??
+            pjsonData['twitch']?['started'] ??
+            pjsonData['floatplane']?['started'];
 
-        isAfterStartTime = true;
-        showPlayed = true;
-        countdownString = whenPlaneIntegration.getTimeUntil(started)['string'];
+        if (started != null) {
+          try {
+            final startedTime = DateTime.parse(started.toString());
+            isAfterStartTime = true;
+            showPlayed = true;
+            final timeUntil = whenPlaneIntegration.getTimeUntil(startedTime);
+            if (mounted) {
+              setState(() {
+                countdownString = timeUntil['string'];
+              });
+            }
+          } catch (e) {
+            debugPrint('Error parsing started time: $e');
+          }
+        }
       } else {
         if (showPlayed) {
           showPlayed = false;
@@ -146,20 +208,24 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
         }
 
         final timeUntil = whenPlaneIntegration.getTimeUntil(nextWan);
-        countdownString = timeUntil['string'];
         isAfterStartTime = timeUntil['late'];
 
-        if (timeUntil['late']) {
+        if (mounted) {
           setState(() {
-            isMainLate = true;
             countdownString = timeUntil['string'];
+            if (timeUntil['late']) {
+              isMainLate = true;
+            }
           });
         }
       }
+    });
+
+    _phraseTimer = Timer.periodic(const Duration(seconds: 45), (timer) {
       if (mounted) {
-        setState(() {});
-      } else {
-        _timer?.cancel();
+        setState(() {
+          phrase = whenPlaneIntegration.newPhrase();
+        });
       }
     });
   }
@@ -167,6 +233,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _phraseTimer?.cancel();
     super.dispose();
   }
 
@@ -174,107 +241,119 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   Widget build(BuildContext context) {
     if (!isLoading) {
       pjsonData = jsonDecode(jsonData);
-      platenessData = jsonDecode(latenessData);
+      if (latenessData != null) {
+        if (latenessData!.isNotEmpty) {
+          platenessData = jsonDecode(latenessData!);
+        }
+      }
     }
     k = generateK();
     final day = DateTime.now().toUtc().weekday;
     final dayIsCloseEnough = day == 5 || day == 6;
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    _startTimer();
-    return isLoading
-        ? Container(
-            color: widget.v
-                ? colorScheme.surface
-                : colorScheme.surfaceContainerLowest,
-            child: Center(
-              child: CircularProgressIndicator(),
-            ),
+    final ageCutoff = 24 * 60 * 60e3;
+    return error
+        ? ErrorScreen(
+            subtext: 'Floaty recieved an unexpected response.',
+            image: 'assets/unexpected.png',
+            message: jsonDecode(jsonData)['error'],
           )
-        : LayoutBuilder(
-            builder:
-                (BuildContext context, BoxConstraints viewportConstraints) {
-              return SingleChildScrollView(
-                child: Container(
-                  width: double.infinity, // Ensure full width
-                  constraints: BoxConstraints(
-                    minHeight: viewportConstraints
-                        .maxHeight, // Ensure it's at least as tall as the viewport
-                  ),
-                  color: widget.v
-                      ? colorScheme.surface
-                      : colorScheme.surfaceContainerLowest,
-                  child: Column(
-                    // Outer Column for centering the content block
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 16.0,
-                            horizontal:
-                                8.0), // Padding around the content block
-                        child: Column(
-                          // Inner Column for the actual content, sized to fit content
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            if (pjsonData['specialStream'] != false)
-                              _buildSpecialStreamCard(),
-                            const SizedBox(height: 12.0),
-                            if (!pjsonData['floatplane']?['isLive'] &&
-                                pjsonData['floatplane']?['isWAN'] == bool &&
-                                pjsonData['floatplane']?['isWAN'] &&
-                                ((dayIsCloseEnough &&
-                                        (pjsonData['floatplane']
-                                                        ?['isThumbnailNew'] !=
-                                                    null &&
-                                                pjsonData['floatplane']
-                                                    ?['isThumbnailNew'] ||
-                                            pjsonData['floatplane']
-                                                        ?['thumbnailAge'] !=
-                                                    null &&
-                                                pjsonData['floatplane']
-                                                        ?['thumbnailAge'] <
-                                                    24 * 60 * 60e3)) &&
-                                    !pjsonData['hasDone']))
-                              _buildShowMightStartSoonAlert(colorScheme),
-                            const SizedBox(height: 12.0),
-                            _buildCountdownCard(colorScheme, textTheme),
-                            const SizedBox(height: 12.0),
-                            _buildPlatformStatusContainer(),
-                            const SizedBox(height: 12.0),
-                            _buildLatenessStats(),
-                            const SizedBox(height: 3.0),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(8),
-                              onTap: () {
-                                launchUrl(Uri.parse('https://whenplane.com'));
-                              },
-                              child: Text('Data provided by Whenplane',
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.grey)),
-                            ),
-                            const SizedBox(height: 12.0),
-                            if (pjsonData['isThereWan']['text'] != null)
-                              _buildSpecialAlert(colorScheme),
-                            const SizedBox(height: 12.0),
-                            if (pjsonData['isDone'] == false &&
-                                (DateTime.now().toUtc().weekday == 5 ||
-                                    DateTime.now().toUtc().weekday == 6))
-                              ConstrainedBox(
-                                  constraints: BoxConstraints(maxWidth: 600),
-                                  child: _buildLatenessVoting(
-                                      colorScheme, textTheme)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+        : isLoading
+            ? Container(
+                color: widget.v
+                    ? colorScheme.surface
+                    : colorScheme.surfaceContainerLowest,
+                child: Center(
+                  child: CircularProgressIndicator(),
                 ),
+              )
+            : LayoutBuilder(
+                builder:
+                    (BuildContext context, BoxConstraints viewportConstraints) {
+                  return SingleChildScrollView(
+                    child: Container(
+                      width: double.infinity, // Ensure full width
+                      constraints: BoxConstraints(
+                        minHeight: viewportConstraints
+                            .maxHeight, // Ensure it's at least as tall as the viewport
+                      ),
+                      color: widget.v
+                          ? colorScheme.surface
+                          : colorScheme.surfaceContainerLowest,
+                      child: Column(
+                        // Outer Column for centering the content block
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16.0,
+                                horizontal:
+                                    8.0), // Padding around the content block
+                            child: Column(
+                              // Inner Column for the actual content, sized to fit content
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (pjsonData['specialStream'] != false)
+                                  _buildSpecialStreamCard(),
+                                const SizedBox(height: 12.0),
+                                if (pjsonData['floatplane'] != null &&
+                                    !pjsonData['floatplane']['isLive'] &&
+                                    pjsonData['floatplane']['isWAN'] != null &&
+                                    pjsonData['floatplane']['isWAN'] &&
+                                    ((dayIsCloseEnough &&
+                                            (pjsonData['floatplane']
+                                                        ['isThumbnailNew'] ==
+                                                    true ||
+                                                (pjsonData['floatplane']
+                                                            ['thumbnailAge'] !=
+                                                        null &&
+                                                    pjsonData['floatplane']
+                                                            ['thumbnailAge'] <
+                                                        ageCutoff))) &&
+                                        !pjsonData['hasDone']))
+                                  _buildShowMightStartSoonAlert(colorScheme),
+                                const SizedBox(height: 12.0),
+                                _buildCountdownCard(colorScheme, textTheme),
+                                const SizedBox(height: 12.0),
+                                _buildPlatformStatusContainer(),
+                                const SizedBox(height: 12.0),
+                                _buildLatenessStats(),
+                                const SizedBox(height: 3.0),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(8),
+                                  onTap: () {
+                                    launchUrl(
+                                        Uri.parse('https://whenplane.com'));
+                                  },
+                                  child: Text('Data provided by Whenplane',
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey)),
+                                ),
+                                const SizedBox(height: 12.0),
+                                if (pjsonData['isThereWan']['text'] != null)
+                                  _buildSpecialAlert(colorScheme),
+                                const SizedBox(height: 12.0),
+                                if (pjsonData != null &&
+                                    !pjsonData['hasDone'] &&
+                                    (DateTime.now().toUtc().weekday == 5 ||
+                                        DateTime.now().toUtc().weekday == 6))
+                                  ConstrainedBox(
+                                      constraints:
+                                          BoxConstraints(maxWidth: 600),
+                                      child: _buildLatenessVoting(
+                                          colorScheme, textTheme)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
-            },
-          );
   }
 
   Widget _buildSpecialStreamCard() {
@@ -349,36 +428,50 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                           width * 0.035,
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                        Column(
                           children: [
-                            Text(
-                              pjsonData['floatplane']['isLive']
-                                  ? 'Currently Live'
-                                  : isSSlate
-                                      ? '$sscountdownText $phrase'
-                                      : sscountdownText,
-                              style: textTheme.titleMedium?.copyWith(
-                                fontSize: width * 0.045,
-                                color: pjsonData['floatplane']['isLive']
-                                    ? colorScheme.primary
-                                    : isSSlate
-                                        ? colorScheme.error
-                                        : colorScheme.onSurface,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            if (pjsonData['specialStream']['isEstimated'] ==
-                                true)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Tooltip(
-                                  message: 'Estimated start time',
-                                  child: Icon(
-                                    Icons.info_outline,
-                                    size: width * 0.04,
-                                    color: colorScheme.onSurfaceVariant,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  pjsonData['floatplane']['isLive']
+                                      ? 'Currently Live'
+                                      : isSSlate
+                                          ? '$sscountdownText $phrase'
+                                          : sscountdownText,
+                                  style: textTheme.titleMedium?.copyWith(
+                                    fontSize: width * 0.045,
+                                    color: pjsonData['floatplane']['isLive']
+                                        ? colorScheme.primary
+                                        : isSSlate
+                                            ? colorScheme.error
+                                            : colorScheme.onSurface,
                                   ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                            if (pjsonData['specialStream']
+                                    ['startIsEstimated'] ==
+                                true)
+                              Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('estimated'),
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 6),
+                                      child: Tooltip(
+                                        message:
+                                            'Often, LTT does not announce streams, they just go live.\nSo the only way we know that a stream is happening is when they upload a title, description, and thumbnail.\nThis usually happens a few hours before the stream starts, and a guess is made at the start time.\nIt will be updated if there is any official word.',
+                                        child: Icon(
+                                          Icons.info_outline,
+                                          size: width * 0.04,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                           ],
@@ -432,7 +525,8 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
 
     bool mainShowStarted = pjsonData['youtube']['started'] != null;
 
-    bool isLate = isAfterStartTime && !isPreShow && !isMainShow;
+    bool isLate =
+        isAfterStartTime && !pjsonData['hasDone'] && !isPreShow && !isMainShow;
 
     return Card(
       elevation: 1,
@@ -446,88 +540,82 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
           children: [
             // Display text based on the state
             if (isLate)
-              AutoSizeText.rich(
+              Text.rich(
                 TextSpan(
                   text: 'The WAN show is currently',
-                  style: TextStyle(fontSize: 16.0),
+                  style: textTheme.bodyLarge,
                   children: [
                     TextSpan(
-                      text: ' late',
-                      style: TextStyle(fontSize: 16.0, color: Colors.red),
+                      text: ' ${isLate ? phrase : ''}',
+                      style: textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    TextSpan(
-                      text: ' by',
-                      style: TextStyle(fontSize: 16.0),
-                    ),
+                    const TextSpan(text: ' by'),
                   ],
                 ),
                 textAlign: TextAlign.center,
-                maxLines: 2,
               )
             else if (isMainShow)
-              AutoSizeText(
+              Text(
                 'The WAN show has been live for',
-                style: TextStyle(fontSize: 16.0),
+                style: textTheme.bodyLarge,
                 textAlign: TextAlign.center,
-                maxLines: 2,
               )
             else if (pjsonData['floatplane']['isLive'] != null &&
                 pjsonData['floatplane']['isLive'] &&
+                pjsonData['floatplane']['isWAN'] != null &&
                 pjsonData['floatplane']['isWAN'] &&
                 !pjsonData['twitch']['isLive'])
-              AutoSizeText(
+              Text(
                 'The pre-pre-show has been live for',
-                style: TextStyle(fontSize: 16.0),
+                style: textTheme.bodyLarge,
                 textAlign: TextAlign.center,
-                maxLines: 2,
               )
             else if (isPreShow)
-              AutoSizeText(
+              Text(
                 'The pre-show has been live for',
-                style: TextStyle(fontSize: 16.0),
+                style: textTheme.bodyLarge,
                 textAlign: TextAlign.center,
-                maxLines: 2,
               )
             else
-              AutoSizeText(
+              Text(
                 'The WAN show is (supposed) to start in',
-                style: TextStyle(fontSize: 16.0),
+                style: textTheme.bodyLarge,
                 textAlign: TextAlign.center,
-                maxLines: 2,
               ),
-            AutoSizeText(
-              '$countdownString ${isLate ? phrase : ''}',
-              minFontSize: 16.0,
+            Text(
+              countdownString,
               style: textTheme.headlineMedium?.copyWith(
                 color: isLate ? colorScheme.error : colorScheme.onSurface,
               ),
               textAlign: TextAlign.center,
-              textScaleFactor: 1,
-              maxLines: 1,
             ),
-
-            if (!isAfterStartTime && !isMainShow) ...[
-              AutoSizeText(
+            if (!isLate && !isMainShow) ...[
+              Text(
                 'Next WAN: ${DateFormat('MM/dd/yyyy HH:mm:ss').format(whenPlaneIntegration.getNextWAN(DateTime.now()).toLocal())}',
-                minFontSize: 8.0,
-                maxLines: 1,
+                style: textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
-            ] else if (isLate) ...[
-              const AutoSizeText(
-                  'It usually actually starts between 1 and 3 hours late.',
-                  textAlign: TextAlign.center,
-                  maxLines: 2),
+            ] else if (isLate && !isMainShow) ...[
+              Text(
+                'It usually actually starts roughly 1 or 2 hours late.',
+                style: textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
             ] else if ((isMainShow && mainShowStarted) || isPreShow) ...[
-              AutoSizeText.rich(
+              Text.rich(
                 textAlign: TextAlign.center,
                 TextSpan(
+                  style: textTheme.bodyMedium,
                   children: [
                     TextSpan(
-                      text: isPreShow
+                      text: !isMainShow && pjsonData['floatplane']['isLive']
                           ? 'Pre-show started '
-                          : (pjsonData['floatplane']['isLive'] &&
-                                  pjsonData['floatplane']['isWAN'] &&
+                          : (isPreShow &&
+                                  !isMainShow &&
+                                  pjsonData['floatplane']['isLive'] &&
                                   !pjsonData['twitch']['isLive'])
                               ? 'Pre-pre-show started '
                               : 'Started ',
@@ -544,11 +632,12 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                           final formatter = DateFormat('HH:mm:ss');
                           return formatter.format(parsed.toLocal());
                         })(),
-                        style: const TextStyle(fontSize: 16.0),
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                   ],
                 ),
-                maxLines: 1,
               )
             ],
           ],
@@ -565,7 +654,8 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
         _buildPlatformStatus(
           icon: SimpleIcons.twitch,
           platform: "Twitch",
-          status: pjsonData['twitch']['isLive']
+          status: pjsonData['twitch']['isLive'] != null &&
+                  pjsonData['twitch']['isLive']
               ? pjsonData['twitch']['isWAN']
                   ? '(live)'
                   : '(live non-WAN)'
@@ -585,12 +675,19 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
         ),
         _buildPlatformStatus(
           icon: SimpleIcons.floatplane,
+          isUpcoming: pjsonData['floatplane']['isThumbnailNew'] != null &&
+              pjsonData['floatplane']['isThumbnailNew'],
           platform: "Floatplane",
-          status: pjsonData['floatplane']['isLive']
-              ? pjsonData['floatplane']['isWAN']
+          status: pjsonData['floatplane']['isLive'] != null &&
+                  pjsonData['floatplane']['isLive']
+              ? pjsonData['floatplane']['isWAN'] != null &&
+                      pjsonData['floatplane']['isWAN']
                   ? '(live)'
                   : '(live non-WAN)'
-              : '(offline)',
+              : pjsonData['floatplane']['isThumbnailNew'] != null &&
+                      pjsonData['floatplane']['isThumbnailNew']
+                  ? '(upcoming ${pjsonData['floatplane']['isWAN'] != null ? (pjsonData['floatplane']['isWAN'] ? 'wan' : 'non-wan') : ''})'
+                  : '(offline)',
           isLive: pjsonData['floatplane']['isLive'],
         ),
       ],
@@ -915,59 +1012,6 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
             ],
           ),
           const SizedBox(height: 16.0),
-          //  color: ((whenPlaneIntegration.getTimeUntil(
-          //                                                   whenPlaneIntegration
-          //                                                           .getNearestWan(
-          //                                                               DateTime.now())[
-          //                                                       'date'] as DateTime,
-          //                                                   now: DateTime
-          //                                                       .now())['distance'] ??
-          //                                               0)
-          //                                           .abs()) >
-          //                                       (vote['time'] as int?) ??
-          //                                   0
-          //                               ? Colors.grey
-          //                               : Colors.white,
-          //                           decoration: ((whenPlaneIntegration.getTimeUntil(
-          //                                                   whenPlaneIntegration
-          //                                                           .getNearestWan(
-          //                                                               DateTime.now())[
-          //                                                       'date'] as DateTime,
-          //                                                   now: DateTime
-          //                                                       .now())['distance'] ??
-          //                                               0)
-          //                                           .abs()) >
-          //                                       (vote['time'] as int?) ??
-          //                                   0
-          //                               ? TextDecoration.lineThrough
-          //                               : null,
-          //                         ),
-          //                       ),
-          //                       Text(percentageText),
-          //                     ],
-          //                   ),
-          //                   const SizedBox(height: 4.0),
-          //                   Container(
-          //                     decoration: BoxDecoration(
-          //                       borderRadius: BorderRadius.circular(4.0),
-          //                     ),
-          //                     clipBehavior: Clip.antiAlias,
-          //                     child: LinearProgressIndicator(
-          //                       value: percentage > 0 ? percentage / 100 : 0,
-          //                       backgroundColor: Colors.grey[700],
-          //                       color: ((whenPlaneIntegration.getTimeUntil(
-          //                                                   whenPlaneIntegration
-          //                                                           .getNearestWan(
-          //                                                               DateTime.now())[
-          //                                                       'date'] as DateTime,
-          //                                                   now: DateTime.now())[
-          //                                               'distance'] ??
-          //                                           0)
-          //                                       .abs()) >
-          //                                   (vote['time'] as int?) ??
-          //                               0
-          //                           ? Colors.grey[800]
-          //                           : Theme.of(context).colorScheme.primary,
           ...pjsonData['votes'].map<Widget>((vote) {
             final voteCount = vote['votes'] as int;
             final voteName = vote['name'] as String;
@@ -975,6 +1019,11 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
             final percentage = totalVotes > 0
                 ? (voteCount / totalVotes * 100).clamp(0, 100)
                 : 0.0;
+
+            final isExpired = DateTime.now().isAfter(
+                ((nearestWan['date'] as DateTime)
+                    .toUtc()
+                    .add(Duration(milliseconds: vote['time']))));
 
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 2.5),
@@ -1004,23 +1053,13 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                           left: 0,
                           top: 0,
                           bottom: 0,
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
                             width: percentage > 0
                                 ? constraints.maxWidth * (percentage / 100)
                                 : 0,
                             decoration: BoxDecoration(
-                              color: ((whenPlaneIntegration.getTimeUntil(
-                                                      whenPlaneIntegration
-                                                              .getNearestWan(
-                                                                  DateTime
-                                                                      .now())[
-                                                          'date'] as DateTime,
-                                                      now: DateTime
-                                                          .now())['distance'] ??
-                                                  0)
-                                              .abs()) >
-                                          (vote['time'] as int?) ??
-                                      0
+                              color: isExpired
                                   ? colorScheme.inversePrimary
                                   : colorScheme.primaryContainer,
                               borderRadius: const BorderRadius.only(
@@ -1061,63 +1100,14 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                                       : null,
                                 ),
                                 const SizedBox(width: 12),
-                                // Option name
-                                // color: ((whenPlaneIntegration.getTimeUntil(
-                                //                                                   whenPlaneIntegration
-                                //                                                           .getNearestWan(
-                                //                                                               DateTime.now())[
-                                //                                                       'date'] as DateTime,
-                                //                                                   now: DateTime
-                                //                                                       .now())['distance'] ??
-                                //                                               0)
-                                //                                           .abs()) >
-                                //                                       (vote['time'] as int?) ??
-                                //                                   0
-                                //                               ? Colors.grey
-                                //                               : Colors.white,
-                                //                           decoration: ((whenPlaneIntegration.getTimeUntil(
-                                //                                                   whenPlaneIntegration
-                                //                                                           .getNearestWan(
-                                //                                                               DateTime.now())[
-                                //                                                       'date'] as DateTime,
-                                //                                                   now: DateTime
-                                //                                                       .now())['distance'] ??
-                                //                                               0)
-                                //                                           .abs()) >
-                                //                                       (vote['time'] as int?) ??
-                                //                                   0
-                                //                               ? TextDecoration.lineThrough
-                                //                               : null,
                                 Expanded(
                                   child: Text(
                                     voteName,
                                     style: textTheme.bodyMedium?.copyWith(
-                                      color: ((whenPlaneIntegration.getTimeUntil(
-                                                              whenPlaneIntegration
-                                                                      .getNearestWan(
-                                                                          DateTime
-                                                                              .now())['date']
-                                                                  as DateTime,
-                                                              now: DateTime
-                                                                  .now())['distance'] ??
-                                                          0)
-                                                      .abs()) >
-                                                  (vote['time'] as int?) ??
-                                              0
+                                      color: isExpired
                                           ? colorScheme.onSurfaceVariant
                                           : colorScheme.onSurface,
-                                      decoration: ((whenPlaneIntegration.getTimeUntil(
-                                                              whenPlaneIntegration
-                                                                      .getNearestWan(
-                                                                          DateTime
-                                                                              .now())['date']
-                                                                  as DateTime,
-                                                              now: DateTime
-                                                                  .now())['distance'] ??
-                                                          0)
-                                                      .abs()) >
-                                                  (vote['time'] as int?) ??
-                                              0
+                                      decoration: isExpired
                                           ? TextDecoration.lineThrough
                                           : null,
                                     ),

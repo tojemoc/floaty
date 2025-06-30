@@ -2,6 +2,7 @@ import 'package:floaty/features/channel/components/filter_panel.dart';
 import 'package:floaty/features/channel/components/stat_column.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
 import 'package:floaty/settings.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -106,7 +107,9 @@ class ChannelScreenStateWrapperState
         );
 
     fetchafter = 0;
-    _pagingController.refresh();
+    if (mounted) {
+      _pagingController.refresh();
+    }
   }
 
   void _calculateScrollThreshold() {
@@ -181,6 +184,7 @@ class ChannelScreenStateWrapperState
     try {
       final state = ref.read(channelScreenProvider);
       home = await fpApiRequests.getChannelVideoFeed(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
         rootchannel.id,
         _pageSize,
         fetchafter,
@@ -195,15 +199,24 @@ class ChannelScreenStateWrapperState
       fetchafter = fetchafter + 20;
 
       newposts = home;
-      isLastPage = home!.length < _pageSize;
+
+      if (newposts.length < _pageSize) {
+        _pagingController.value = _pagingController.value.copyWith(
+          hasNextPage: false,
+          isLoading: false,
+        );
+      }
 
       List<String> blogPostIds = newposts
           .map((post) => post.id)
           .where((id) => id != null)
           .cast<String>()
           .toList();
+
       List<GetProgressResponse> progressResponses =
-          await fpApiRequests.getVideoProgress(blogPostIds);
+          await fpApiRequests.getVideoProgress(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+              blogPostIds);
 
       Map<String, GetProgressResponse?> progressMap = {
         for (var progress in progressResponses) progress.id!: progress
@@ -220,7 +233,9 @@ class ChannelScreenStateWrapperState
 
   void getStats() async {
     late dynamic stats;
-    stats = await fpApiRequests.getStatsV3(rootchannel.id!);
+    stats = await fpApiRequests.getStatsV3(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        rootchannel.id!);
     if (mounted) {
       setState(() {
         response = stats;
@@ -229,13 +244,16 @@ class ChannelScreenStateWrapperState
     }
   }
 
-  void load() {
+  void load() async {
     bool statsFetched = false;
 
     if (widget.subName != null) {
       isRootChannel = false;
 
-      fpApiRequests.getCreator(urlname: widget.channelName).listen((creator) {
+      fpApiRequests
+          .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
+              urlname: widget.channelName)
+          .listen((creator) {
         setState(() {
           rootchannel = creator;
           channel = creator.channels?.firstWhere(
@@ -252,7 +270,10 @@ class ChannelScreenStateWrapperState
     } else {
       isRootChannel = true;
 
-      fpApiRequests.getCreator(urlname: widget.channelName).listen((creator) {
+      fpApiRequests
+          .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
+              urlname: widget.channelName)
+          .listen((creator) {
         setState(() {
           channel = creator;
           rootchannel = creator;
@@ -715,7 +736,9 @@ class ChannelScreenStateWrapperState
                 body: RefreshIndicator(
                   onRefresh: () async {
                     fetchafter = 0;
-                    _pagingController.refresh();
+                    if (mounted) {
+                      _pagingController.refresh();
+                    }
                   },
                   child: Stack(
                     children: [

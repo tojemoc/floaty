@@ -1,4 +1,5 @@
 import 'package:floaty/settings.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,7 +86,9 @@ class ProfileScreenStateWrapperState
   }
 
   void load() async {
-    final res = await fpApiRequests.getNamedUser(widget.userName);
+    final res = await fpApiRequests.getNamedUser(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        widget.userName);
     setState(() {
       user = res;
       rootLayoutKey.currentState?.setAppBar(Text(user[0]['username']));
@@ -95,7 +98,9 @@ class ProfileScreenStateWrapperState
   }
 
   Future<void> parseActivityData() async {
-    final res = jsonDecode(await fpApiRequests.getActivity(user[0]['id']));
+    final res = jsonDecode(await fpApiRequests.getActivity(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        user[0]['id']));
     final activityData = res['activity'] as List<dynamic>;
     Map<String, List<CommentData>> commentsByDate = {};
     for (var item in activityData) {

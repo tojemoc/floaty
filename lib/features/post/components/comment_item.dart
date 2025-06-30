@@ -3,6 +3,7 @@ import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/post/components/expandable_description.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,7 +66,9 @@ class _CommentItemState extends ConsumerState<CommentItem> {
         _editController.text.trim().length <= 1500) {
       try {
         final editedComment = await fpApiRequests.editComment(
-            widget.comment.id, _editController.text.trim());
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            widget.comment.id,
+            _editController.text.trim());
 
         if (editedComment == 'OK') {
           if (mounted) {
@@ -307,6 +310,9 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                                             onPressed: () async {
                                               var res = await fpApiRequests
                                                   .deleteComment(
+                                                      (await whitelabels
+                                                              .getSelectedWhitelabel())
+                                                          .friendlyName,
                                                       widget.comment.id);
 
                                               if (res == 'OK') {
@@ -461,7 +467,10 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                           ),
                           onPressed: () async {
                             final res = await fpApiRequests.likeComment(
-                                widget.comment.id, widget.content.id!);
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                widget.comment.id,
+                                widget.content.id!);
                             if (res == 'success') {
                               setState(() {
                                 if (_isLiked) {
@@ -518,7 +527,10 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                           ),
                           onPressed: () async {
                             final res = await fpApiRequests.dislikeComment(
-                                widget.comment.id, widget.content.id!);
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                widget.comment.id,
+                                widget.content.id!);
                             if (res == 'success') {
                               setState(() {
                                 if (_isDisliked) {

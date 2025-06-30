@@ -14,6 +14,7 @@ class FPWebsockets {
   String? liveid;
   String userAgent;
   PackageInfo? packageInfo;
+  Function(dynamic)? _radioChatterHandler;
 
   @override
   FPWebsockets({required this.token, required this.userAgent}) {
@@ -51,9 +52,18 @@ class FPWebsockets {
 
     unifiedConnectionListener(connectionHandler, io.socket);
 
-    io.socket.on('radioChatter', (data) {
+    // Remove any existing handler first
+    if (_radioChatterHandler != null) {
+      io.socket.off('radioChatter', _radioChatterHandler!);
+    }
+
+    // Create and store the new handler
+    _radioChatterHandler = (data) {
       messagesHandler({'socket': 'chat', 'type': 'radioChatter', 'data': data});
-    });
+    };
+
+    // Add the new handler
+    io.socket.on('radioChatter', _radioChatterHandler!);
   }
 
   void chatDisconnect(Function(Map<String, dynamic>) connectionHandler) {

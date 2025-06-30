@@ -3,6 +3,8 @@ import 'package:floaty/features/router/components/sidebar_channel_item.dart';
 import 'package:floaty/features/router/components/sidebar_item.dart';
 import 'package:floaty/features/router/components/sidebar_size_control.dart';
 import 'package:floaty/features/router/components/sidebar_text.dart';
+import 'package:floaty/shared/widgets/switcher.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +12,7 @@ import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
 import 'package:floaty/features/player/components/mini_player_widget.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
+import 'package:go_router/go_router.dart';
 
 final GlobalKey<RootLayoutState> rootLayoutKey = GlobalKey<RootLayoutState>();
 
@@ -24,7 +27,6 @@ class RootLayout extends ConsumerStatefulWidget {
 class RootLayoutState extends ConsumerState<RootLayout>
     with SingleTickerProviderStateMixin {
   UserSelfV3Response? user;
-
   late bool isSmallScreen;
   @override
   void initState() {
@@ -35,7 +37,7 @@ class RootLayoutState extends ConsumerState<RootLayout>
   void setAppBar(Widget title, {List<Widget>? actions, Widget? leading}) {
     ref
         .read(rootProvider.notifier)
-        .setAppBar(title, actions: actions, leading: leading);
+        .setAppBar(title, actions: actions ?? [], leading: leading);
   }
 
   @override
@@ -136,6 +138,25 @@ class RootLayoutState extends ConsumerState<RootLayout>
                 ],
               ),
             ),
+          ),
+          Switcher(
+            whitelabels: whitelabels.getWhitelabels(),
+            onSwitch: (whitelabel) {
+              ref.read(rootProvider.notifier).loadsidebar();
+              final currentPath = GoRouterState.of(context).uri.path;
+              if (currentPath.startsWith('/post/') ||
+                  currentPath.startsWith('/channel/')) {
+                // If current route is /post or /channel, go to home
+                context.go('/home');
+              } else {
+                // Otherwise, refresh the current page
+                final location = GoRouterState.of(context).uri.toString();
+                context.replace(
+                    '$location?time=${DateTime.now().millisecondsSinceEpoch}, ${DateTime.now().millisecondsSinceEpoch}');
+              }
+            },
+            sidebar: true,
+            compact: isSidebarCollapsed,
           ),
           Column(
             children: [

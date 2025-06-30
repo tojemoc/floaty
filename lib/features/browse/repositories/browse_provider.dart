@@ -1,3 +1,4 @@
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -42,7 +43,10 @@ class BrowseNotifier extends StateNotifier<BrowseState> {
   void fetchCreators() async {
     state = state.copyWith(isLoading: true);
     try {
-      fpApiRequests.getCreatorDiscovery().listen((fetchedCreators) {
+      fpApiRequests
+          .getCreatorDiscovery(
+              (await whitelabels.getSelectedWhitelabel()).friendlyName)
+          .listen((fetchedCreators) {
         state = state.copyWith(creators: fetchedCreators, isLoading: false);
       }, onError: (error) {
         state = state.copyWith(creators: [], isLoading: false);
@@ -72,9 +76,13 @@ class BrowseNotifier extends StateNotifier<BrowseState> {
     );
   }
 
-  void _performSearch(String query) {
+  void _performSearch(String query) async {
     state = state.copyWith(isLoading: true);
-    fpApiRequests.getCreatorDiscovery(query: query).listen((fetchedCreators) {
+    fpApiRequests
+        .getCreatorDiscovery(
+            (await whitelabels.getSelectedWhitelabel()).friendlyName,
+            query: query)
+        .listen((fetchedCreators) {
       state = state.copyWith(
         creators: fetchedCreators,
         isLoading: false,

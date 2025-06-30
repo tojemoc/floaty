@@ -1,5 +1,6 @@
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/api/models/definitions.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
 import 'dart:convert';
@@ -116,7 +117,8 @@ class PostNotifier extends StateNotifier<PostState> {
 
     try {
       ContentPostV3Response? loadedPost;
-      final postStream = fpApiRequests.getBlogPost(postId);
+      final postStream = fpApiRequests.getBlogPost(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName, postId);
       await for (final post in postStream) {
         loadedPost = post;
         state = state.copyWith(
@@ -265,13 +267,15 @@ class PostNotifier extends StateNotifier<PostState> {
 
   Future<void> _loadRecommendedPosts(String postId) async {
     try {
-      final recommended = await fpApiRequests.getRecommended(postId);
+      final recommended = await fpApiRequests.getRecommended(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName, postId);
       final List<String> postIds = (recommended)
           .where((post) => post.id != null)
           .map((post) => post.id!)
           .toList();
 
-      final progress = await fpApiRequests.getVideoProgress(postIds);
+      final progress = await fpApiRequests.getVideoProgress(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName, postIds);
       final progressMap = <String, GetProgressResponse>{};
 
       for (var item in progress) {
@@ -292,7 +296,9 @@ class PostNotifier extends StateNotifier<PostState> {
   Future<void> toggleLike() async {
     if (state.post?.id == null) return;
 
-    final res = await fpApiRequests.likeBlogPost(state.post!.id!);
+    final res = await fpApiRequests.likeBlogPost(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        state.post!.id!);
     if (res == 'success') {
       state = state.copyWith(
         isLiked: !state.isLiked,
@@ -307,7 +313,9 @@ class PostNotifier extends StateNotifier<PostState> {
   Future<void> toggleDislike() async {
     if (state.post?.id == null) return;
 
-    final res = await fpApiRequests.dislikeBlogPost(state.post!.id!);
+    final res = await fpApiRequests.dislikeBlogPost(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        state.post!.id!);
     if (res == 'success') {
       state = state.copyWith(
         isDisliked: !state.isDisliked,
@@ -485,7 +493,10 @@ final downloadOptionsProvider =
 // Media Quality Provider
 final mediaQualityProvider = FutureProvider.family<List<VideoQuality>, String>(
     (ref, attachmentId) async {
-  final res = await fpApiRequests.getDelivery('onDemand', attachmentId);
+  final res = await fpApiRequests.getDelivery(
+      (await whitelabels.getSelectedWhitelabel()).friendlyName,
+      'onDemand',
+      attachmentId);
   final decoded = jsonDecode(res);
 
   List<VideoQuality> qualities = [];

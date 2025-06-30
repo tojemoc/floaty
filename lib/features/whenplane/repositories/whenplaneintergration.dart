@@ -44,8 +44,10 @@ class WhenPlaneIntegration {
 
   Future<void> initUserAgent() async {
     packageInfo = await PackageInfo.fromPlatform();
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
   }
 
   Future<void> initHttp() async {
@@ -53,7 +55,6 @@ class WhenPlaneIntegration {
     final cookieJar = PersistCookieJar(
       storage: FileStorage('${dir.path}/.cookies/'),
     );
-
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       responseType: ResponseType.plain,
@@ -62,13 +63,18 @@ class WhenPlaneIntegration {
         'User-Agent': userAgent,
       },
     ));
-
     _dio.interceptors.add(CookieManager(cookieJar));
   }
 
-  Future<String> fetchData(String apiUrl) async {
-    final response = await _dio.get('$baseUrl/$apiUrl');
-    return response.data.toString();
+  Future<dynamic> fetchData(String apiUrl) async {
+    try {
+      final response = await _dio.get('$baseUrl/$apiUrl');
+      return response.data.toString();
+    } on DioException catch (e) {
+      return {'error': e.response?.statusCode ?? 0};
+    } catch (e) {
+      return {'error': 0}; // For non-HTTP errors
+    }
   }
 
   getPreviousShowInfo(String date) {
@@ -102,7 +108,7 @@ class WhenPlaneIntegration {
     }
   }
 
-  Future<String> floatplanestats() async {
+  Future<dynamic> floatplanestats() async {
     return fetchData(
         'floatplane?fast=false&description=false&d=${DateTime.now().millisecondsSinceEpoch}');
   }
@@ -208,13 +214,14 @@ class WhenPlaneIntegration {
     return n > 9 ? "$n" : "0$n";
   }
 
-  Map<String, dynamic> getTimeUntil(DateTime date, {DateTime? now}) {
+  Map<String, dynamic> getTimeUntil(DateTime date,
+      {DateTime? now, bool abs = true}) {
     now ??= DateTime.now();
     int distance = date.difference(now).inMilliseconds;
     bool late = false;
     if (distance < 0) {
       late = true;
-      distance = distance.abs();
+      distance = abs ? distance.abs() : distance;
     }
 
     String string = timeString(distance);

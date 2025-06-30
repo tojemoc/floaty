@@ -1,4 +1,5 @@
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:http_cache_hive_store/http_cache_hive_store.dart';
 import 'package:floaty/settings.dart';
 import 'package:floaty/features/api/models/definitions.dart';
@@ -17,7 +18,6 @@ final FPApiRequests fpApiRequests = GetIt.I<FPApiRequests>();
 
 class FPApiRequests {
   late final Settings settings = settings;
-  static const String baseUrl = 'https://www.floatplane.com/api';
   String userAgent = 'FloatyClient/error, CFNetwork';
   late final PersistCookieJar cookieJar;
   late final Dio _dio;
@@ -30,8 +30,10 @@ class FPApiRequests {
 
   Future<void> _init() async {
     packageInfo = await PackageInfo.fromPlatform();
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
     final dir = await getApplicationSupportDirectory();
     cookieJar = PersistCookieJar(
       storage: FileStorage('${dir.path}/.cookies/'),
@@ -47,7 +49,6 @@ class FPApiRequests {
     );
 
     _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
       responseType: ResponseType.plain,
       headers: {
         'User-Agent': userAgent,
@@ -61,16 +62,17 @@ class FPApiRequests {
 
   Future<String> postData(
     String apiUrl,
-    Map<String, dynamic>? body, [
+    String whitelabel, [
+    Map<String, dynamic>? body,
     Map<String, dynamic>? queryParams,
   ]) async {
     try {
+      final whiteLabel = whitelabels.getWhitelabel(whitelabel);
       final response = await _dio.post(
-        '$baseUrl/$apiUrl',
+        '${whiteLabel.apiUrl}/$apiUrl',
         data: body,
         queryParameters: queryParams,
       );
-
       return response.data.toString();
     } on DioException catch (e) {
       return 'Error: ${e.response?.statusCode}, ${e.response?.data}';
@@ -78,24 +80,25 @@ class FPApiRequests {
   }
 
   Future<dynamic> fetchData(
-    String apiUrl, [
+    String apiUrl,
+    String whitelabel, [
     Map<String, dynamic>? queryParams,
   ]) async {
     try {
+      final whiteLabel = whitelabels.getWhitelabel(whitelabel);
       final response = await _dio.get(
-        '$baseUrl/$apiUrl',
+        '${whiteLabel.apiUrl}/$apiUrl',
         queryParameters: queryParams,
       );
-
       return response.data;
     } on DioException catch (e) {
       return {'statusCode': e.response?.statusCode ?? 500, 'body': e.message};
     }
   }
 
-  Stream<UserSelfV3Response> getUser() async* {
+  Stream<UserSelfV3Response> getUser(String whitelabel) async* {
     try {
-      final user = await fetchData('v3/user/self');
+      final user = await fetchData('v3/user/self', whitelabel);
       if (user != null && user is String && user.isNotEmpty) {
         yield UserSelfV3Response.fromJson(jsonDecode(user));
       }
@@ -104,31 +107,43 @@ class FPApiRequests {
     }
   }
 
-  Future<List<dynamic>> getNamedUser(String username) async {
-    final user = await fetchData('v3/user/named?username[0]=$username');
+  Future<UserSelfV3Response> getUserNOS(String whitelabel) async {
+    try {
+      final user = await fetchData('v3/user/self', whitelabel);
+      return UserSelfV3Response.fromJson(jsonDecode(user));
+    } catch (e) {
+      return UserSelfV3Response();
+    }
+  }
+
+  Future<List<dynamic>> getNamedUser(String whitelabel, String username) async {
+    final user =
+        await fetchData('v3/user/named?username[0]=$username', whitelabel);
     if (user != null && user.isNotEmpty) {
       return jsonDecode(user);
     }
     return [];
   }
 
-  Future<dynamic> getActivity(String userId) async {
-    final activity = await fetchData('v3/user/activity?id=$userId');
+  Future<dynamic> getActivity(String whitelabel, String userId) async {
+    final activity = await fetchData('v3/user/activity?id=$userId', whitelabel);
     if (activity != null && activity.isNotEmpty) {
       return activity;
     }
     return [];
   }
 
-  Future<dynamic> registerNotifications(String token) async {
-    final response = await postData('v3/push/web/register?token=$token', null);
+  Future<dynamic> registerNotifications(String whitelabel, String token) async {
+    final response =
+        await postData('v3/push/web/register?token=$token', whitelabel);
     LogService.logInfo('✅ Notifications registered! Response: $response');
     return response;
   }
 
-  Stream<List<CreatorModelV3>> getSubscribedCreators() async* {
+  Stream<List<CreatorModelV3>> getSubscribedCreators(String whitelabel) async* {
     try {
-      final subres = await fetchData('v3/user/subscriptions?active=true');
+      final subres =
+          await fetchData('v3/user/subscriptions?active=true', whitelabel);
       if (subres != null && subres is String && subres.isNotEmpty) {
         List<dynamic> subscriptions = jsonDecode(subres);
         List<String> creatorIds = subscriptions
@@ -140,7 +155,8 @@ class FPApiRequests {
         List<CreatorModelV3> creators = [];
         for (String id in creatorIds) {
           try {
-            final creatorInfo = await fetchData('v3/creator/info?id=$id');
+            final creatorInfo =
+                await fetchData('v3/creator/info?id=$id', whitelabel);
             if (creatorInfo != null &&
                 creatorInfo is String &&
                 creatorInfo.isNotEmpty) {
@@ -158,9 +174,10 @@ class FPApiRequests {
     }
   }
 
-  Stream<List<String>> getSubscribedCreatorsIds() async* {
+  Stream<List<String>> getSubscribedCreatorsIds(String whitelabel) async* {
     try {
-      final subres = await fetchData('v3/user/subscriptions?active=true');
+      final subres =
+          await fetchData('v3/user/subscriptions?active=true', whitelabel);
       if (subres != null && subres.isNotEmpty) {
         List<dynamic> subscriptions = jsonDecode(subres);
         List<String> creatorIds = subscriptions
@@ -177,7 +194,7 @@ class FPApiRequests {
   }
 
   Future<ContentCreatorListV3Response> getMultiCreatorVideoFeed(
-      List<String> creatorIds, int limit,
+      String whitelabel, List<String> creatorIds, int limit,
       {List<ContentCreatorListLastItems>? lastElements}) async {
     try {
       if (creatorIds.isEmpty) {
@@ -199,7 +216,8 @@ class FPApiRequests {
         }
       }
 
-      final response = await fetchData('v3/content/creator/list', queryParams);
+      final response =
+          await fetchData('v3/content/creator/list', whitelabel, queryParams);
       if (response != null && response.isNotEmpty) {
         return ContentCreatorListV3Response.fromJson(jsonDecode(response));
       }
@@ -210,6 +228,7 @@ class FPApiRequests {
   }
 
   Future<List<BlogPostModelV3>> getChannelVideoFeed(
+    String whitelabel,
     String creator,
     int limit,
     int fetchAfter, {
@@ -251,7 +270,8 @@ class FPApiRequests {
           'search': searchQuery,
       };
 
-      final response = await fetchData('v3/content/creator', queryParams);
+      final response =
+          await fetchData('v3/content/creator', whitelabel, queryParams);
       if (response != null && response.isNotEmpty) {
         List<dynamic> decodedResponse = jsonDecode(response);
         return decodedResponse
@@ -265,14 +285,17 @@ class FPApiRequests {
   }
 
   Future<List<GetProgressResponse>> getVideoProgress(
-      List<String> blogPostIds) async {
+    String whitelabel,
+    List<String> blogPostIds,
+  ) async {
     final Map<String, dynamic> requestBody = {
       "ids": blogPostIds,
       "contentType": "blogPost"
     };
 
     try {
-      final response = await postData('v3/content/get/progress', requestBody);
+      final response =
+          await postData('v3/content/get/progress', whitelabel, requestBody);
       if (response.isNotEmpty) {
         final List<dynamic> jsonResponse = jsonDecode(response);
         return jsonResponse
@@ -285,12 +308,13 @@ class FPApiRequests {
     }
   }
 
-  Stream<List<CreatorModelV3>> getCreators({String? query}) async* {
+  Stream<List<CreatorModelV3>> getCreators(String whitelabel,
+      {String? query}) async* {
     try {
       final apiUrl =
           query != null ? 'v3/creator/list?search=$query' : 'v3/creator/list';
 
-      final subres = await fetchData(apiUrl);
+      final subres = await fetchData(apiUrl, whitelabel);
       if (subres != null && subres.isNotEmpty) {
         List<dynamic> jsonList = jsonDecode(subres);
         yield jsonList.map((json) => CreatorModelV3.fromJson(json)).toList();
@@ -300,14 +324,14 @@ class FPApiRequests {
     }
   }
 
-  Stream<List<CreatorDiscoveryResponse>> getCreatorDiscovery(
+  Stream<List<CreatorDiscoveryResponse>> getCreatorDiscovery(String whitelabel,
       {String? query}) async* {
     try {
       final apiUrl = query != null
           ? 'v3/creator/discover?searchField=$query&featuredBlogPosts=1&creatorStats=true'
           : 'v3/creator/discover?featuredBlogPosts=1&creatorStats=true';
 
-      final subres = await fetchData(apiUrl);
+      final subres = await fetchData(apiUrl, whitelabel);
       if (subres != null && subres.isNotEmpty) {
         List<dynamic> jsonList = jsonDecode(subres)['creators'];
         yield jsonList
@@ -319,10 +343,12 @@ class FPApiRequests {
     }
   }
 
-  Future<List<HistoryModelV3>> getHistory({int? offset}) async {
+  Future<List<HistoryModelV3>> getHistory(String whitelabel,
+      {int? offset}) async {
     try {
       int offsetInt = offset ?? 0;
-      final response = await fetchData('v3/content/history?offset=$offsetInt');
+      final response =
+          await fetchData('v3/content/history?offset=$offsetInt', whitelabel);
       if (response != null && response.isNotEmpty) {
         List<dynamic> jsonList = jsonDecode(response);
         return jsonList.map((json) => HistoryModelV3.fromJson(json)).toList();
@@ -333,13 +359,14 @@ class FPApiRequests {
     }
   }
 
-  Stream<CreatorModelV3> getCreator({String? urlname, int? id}) async* {
+  Stream<CreatorModelV3> getCreator(String whitelabel,
+      {String? urlname, int? id}) async* {
     try {
       final apiUrl = urlname != null
           ? 'v3/creator/named?creatorURL=$urlname'
           : 'v3/creator/info?id=$id';
 
-      final creatorInfo = await fetchData(apiUrl);
+      final creatorInfo = await fetchData(apiUrl, whitelabel);
 
       if (creatorInfo != null && creatorInfo.isNotEmpty) {
         List<dynamic> creatorList = jsonDecode(creatorInfo);
@@ -354,9 +381,10 @@ class FPApiRequests {
     }
   }
 
-  Future<StatsModel> getStats(String creatorId) async {
+  Future<StatsModel> getStats(String whitelabel, String creatorId) async {
     try {
-      final stats = await fetchData('v2/plan/info?creatorId=$creatorId');
+      final stats =
+          await fetchData('v2/plan/info?creatorId=$creatorId', whitelabel);
       if (stats != null && stats.isNotEmpty) {
         dynamic statsJson = jsonDecode(stats);
         return StatsModel(
@@ -370,9 +398,11 @@ class FPApiRequests {
     }
   }
 
-  Future<Map<String, dynamic>> getStatsV3(String creatorId) async {
+  Future<Map<String, dynamic>> getStatsV3(
+      String whitelabel, String creatorId) async {
     try {
-      final stats = await fetchData('v3/creator/stats?id=$creatorId');
+      final stats =
+          await fetchData('v3/creator/stats?id=$creatorId', whitelabel);
       if (stats != null && stats.isNotEmpty) {
         dynamic statsJson = jsonDecode(stats);
         return statsJson;
@@ -383,10 +413,10 @@ class FPApiRequests {
     }
   }
 
-  Future<Map<String, dynamic>> getUserInfo() async {
+  Future<Map<String, dynamic>> getUserInfo(String whitelabel) async {
     try {
-      final userinfo =
-          await fetchData('v3/status?platform=flutter&version=FloatyClient');
+      final userinfo = await fetchData(
+          'v3/status?platform=flutter&version=FloatyClient', whitelabel);
       if (userinfo != null && userinfo.isNotEmpty) {
         dynamic userinfoJson = jsonDecode(userinfo);
         return userinfoJson;
@@ -397,9 +427,9 @@ class FPApiRequests {
     }
   }
 
-  Future<Map<String, dynamic>> getInvoices() async {
+  Future<Map<String, dynamic>> getInvoices(String whitelabel) async {
     try {
-      final invoices = await fetchData('v3/payment/invoice/list');
+      final invoices = await fetchData('v3/payment/invoice/list', whitelabel);
       if (invoices != null && invoices.isNotEmpty) {
         dynamic invoicesJson = jsonDecode(invoices);
         return invoicesJson;
@@ -410,10 +440,11 @@ class FPApiRequests {
     }
   }
 
-  Stream<ContentPostV3Response> getBlogPost(String blogPostId) async* {
+  Stream<ContentPostV3Response> getBlogPost(
+      String whitelabel, String blogPostId) async* {
     try {
       final apiUrl = 'v3/content/post?id=$blogPostId';
-      final response = await fetchData(apiUrl);
+      final response = await fetchData(apiUrl, whitelabel);
       if (response != null && response.isNotEmpty) {
         try {
           final jsonData = jsonDecode(response);
@@ -430,9 +461,9 @@ class FPApiRequests {
     }
   }
 
-  Future<String> likeBlogPost(String blogPostId) async {
-    final response = await postData(
-        'v3/content/like', {'contentType': 'blogPost', 'id': blogPostId});
+  Future<String> likeBlogPost(String whitelabel, String blogPostId) async {
+    final response = await postData('v3/content/like', whitelabel,
+        {'contentType': 'blogPost', 'id': blogPostId});
     final decodedres = jsonDecode(response);
     if (decodedres.contains('like')) {
       return 'success';
@@ -443,9 +474,9 @@ class FPApiRequests {
     }
   }
 
-  Future<String> dislikeBlogPost(String blogPostId) async {
-    final response = await postData(
-        'v3/content/dislike', {'contentType': 'blogPost', 'id': blogPostId});
+  Future<String> dislikeBlogPost(String whitelabel, String blogPostId) async {
+    final response = await postData('v3/content/dislike', whitelabel,
+        {'contentType': 'blogPost', 'id': blogPostId});
     final decodedres = jsonDecode(response);
     if (decodedres.contains('dislike')) {
       return 'success';
@@ -456,9 +487,10 @@ class FPApiRequests {
     }
   }
 
-  Future<String> likeComment(String commentId, String blogPostId) async {
-    final response = await postData(
-        'v3/comment/like', {'comment': commentId, 'blogPost': blogPostId});
+  Future<String> likeComment(
+      String whitelabel, String commentId, String blogPostId) async {
+    final response = await postData('v3/comment/like', whitelabel,
+        {'comment': commentId, 'blogPost': blogPostId});
     final decodedres = jsonDecode(response);
     if (decodedres.contains('like')) {
       return 'success';
@@ -469,9 +501,10 @@ class FPApiRequests {
     }
   }
 
-  Future<String> dislikeComment(String commentId, String blogPostId) async {
-    final response = await postData(
-        'v3/comment/dislike', {'comment': commentId, 'blogPost': blogPostId});
+  Future<String> dislikeComment(
+      String whitelabel, String commentId, String blogPostId) async {
+    final response = await postData('v3/comment/dislike', whitelabel,
+        {'comment': commentId, 'blogPost': blogPostId});
     final decodedres = jsonDecode(response);
     if (decodedres.contains('dislike')) {
       return 'success';
@@ -482,9 +515,11 @@ class FPApiRequests {
     }
   }
 
-  Future<List<BlogPostModelV3>> getRecommended(String blogPostId) async {
+  Future<List<BlogPostModelV3>> getRecommended(
+      String whitelabel, String blogPostId) async {
     try {
-      final response = await fetchData('v3/content/related?id=$blogPostId');
+      final response =
+          await fetchData('v3/content/related?id=$blogPostId', whitelabel);
       if (response != null && response.isNotEmpty) {
         List<dynamic> decodedResponse = json.decode(response) as List<dynamic>;
         return decodedResponse
@@ -497,17 +532,19 @@ class FPApiRequests {
     }
   }
 
-  Future<List<CommentModel>> getComments(
-      String blogPostId, int limit, String sortBy, String sortOrder,
+  Future<List<CommentModel>> getComments(String whitelabel, String blogPostId,
+      int limit, String sortBy, String sortOrder,
       {String? fetchAfter}) async {
     try {
       dynamic response;
       if (fetchAfter != null) {
         response = await fetchData(
-            'v3/comment?blogPost=$blogPostId&limit=$limit&fetchAfter=$fetchAfter&sortBy=$sortBy&sortDirection=$sortOrder');
+            'v3/comment?blogPost=$blogPostId&limit=$limit&fetchAfter=$fetchAfter&sortBy=$sortBy&sortDirection=$sortOrder',
+            whitelabel);
       } else {
         response = await fetchData(
-            'v3/comment?blogPost=$blogPostId&limit=$limit&sortBy=$sortBy&sortDirection=$sortOrder');
+            'v3/comment?blogPost=$blogPostId&limit=$limit&sortBy=$sortBy&sortDirection=$sortOrder',
+            whitelabel);
       }
 
       if (response != null && response.isNotEmpty) {
@@ -523,11 +560,12 @@ class FPApiRequests {
     }
   }
 
-  Future<List<CommentModel>> getReplies(
-      String comment, String blogPost, int limit, String rid) async {
+  Future<List<CommentModel>> getReplies(String whitelabel, String comment,
+      String blogPost, int limit, String rid) async {
     try {
       final response = await fetchData(
-          'v3/comment/replies?comment=$comment&blogPost=$blogPost&limit=$limit&rid=$rid');
+          'v3/comment/replies?comment=$comment&blogPost=$blogPost&limit=$limit&rid=$rid',
+          whitelabel);
 
       if (response != null && response.isNotEmpty) {
         final List<dynamic> decodedData =
@@ -542,10 +580,11 @@ class FPApiRequests {
     }
   }
 
-  Future<CommentModel?> comment(String blogPostId, String comment,
+  Future<CommentModel?> comment(
+      String whitelabel, String blogPostId, String comment,
       {String? replyto}) async {
     try {
-      final response = await postData('v3/comment', {
+      final response = await postData('v3/comment', whitelabel, {
         'blogPost': blogPostId,
         if (replyto != null) 'replyTo': replyto,
         'text': comment
@@ -560,50 +599,55 @@ class FPApiRequests {
     }
   }
 
-  Future<String> deleteComment(String commentId) async {
-    final response = await postData('v3/comment/delete?comment=$commentId', {});
-    return response;
-  }
-
-  Future<String> editComment(String commentId, String text) async {
+  Future<String> deleteComment(String whitelabel, String commentId) async {
     final response =
-        await postData('v3/comment/edit?comment=$commentId&text=$text', {});
+        await postData('v3/comment/delete?comment=$commentId', whitelabel, {});
     return response;
   }
 
-  Future<String> getDelivery(String scenario, String entityId) async {
+  Future<String> editComment(
+      String whitelabel, String commentId, String text) async {
+    final response = await postData(
+        'v3/comment/edit?comment=$commentId&text=$text', whitelabel, {});
+    return response;
+  }
+
+  Future<String> getDelivery(
+      String whitelabel, String scenario, String entityId) async {
     try {
       final res = await fetchData(
-          'v3/delivery/info?scenario=$scenario&entityId=$entityId&outputKind=hls.mpegts');
+          'v3/delivery/info?scenario=$scenario&entityId=$entityId&outputKind=hls.mpegts',
+          whitelabel);
       return res;
     } catch (e) {
       return '';
     }
   }
 
-  Future<String> getDeliveryv2(String type, String guid) async {
+  Future<String> getDeliveryv2(
+      String whitelabel, String type, String guid) async {
     try {
-      final res = await fetchData('v2/cdn/delivery?type=$type&guid=$guid');
+      final res =
+          await fetchData('v2/cdn/delivery?type=$type&guid=$guid', whitelabel);
       return res;
     } catch (e) {
       return '';
     }
   }
 
-  Future<String> getContent(String type, String id) async {
+  Future<String> getContent(String whitelabel, String type, String id) async {
     try {
-      final res = await fetchData('v3/content/$type?id=$id');
+      final res = await fetchData('v3/content/$type?id=$id', whitelabel);
       return res;
     } catch (e) {
       return '';
     }
   }
 
-  Future<void> submitVote(String id, int vote) async {
-    final response = await postData('v3/poll/votePoll', {
-      'pollId': id,
-      'optionIndex': vote,
-    });
+  Future<void> submitVote(String whitelabel, String id, int vote) async {
+    print('Submitting vote for poll $id with option $vote');
+    final response = await postData(
+        'v3/poll/votePoll?pollId=$id&optionIndex=$vote', whitelabel);
     LogService.logInfo('✅ Submitted Vote! response: $response');
   }
 
@@ -611,7 +655,8 @@ class FPApiRequests {
   Timer? _progressDebounceTimer;
   final Map<String, Map<String, dynamic>> _pendingProgress = {};
 
-  Future<void> progress(String id, int progress, String contentType) async {
+  Future<void> progress(
+      String whitelabel, String id, int progress, String contentType) async {
     if (id.isEmpty) return;
     _pendingProgress[id] = {
       'progress': progress,
@@ -623,7 +668,7 @@ class FPApiRequests {
         final String entryId = entry.key;
         final Map<String, dynamic> params = entry.value;
 
-        await postData('v3/content/progress', {
+        await postData('v3/content/progress', whitelabel, {
           'id': entryId,
           'contentType': params['contentType'],
           'progress': params['progress'],
@@ -633,12 +678,17 @@ class FPApiRequests {
     });
   }
 
-  Future<void> iprogress(String id, int progress, String contentType) async {
+  Future<void> iprogress(
+      String whitelabel, String id, int progress, String contentType) async {
     if (id.isEmpty) return;
-    await postData('v3/content/progress', {
+    await postData('v3/content/progress', whitelabel, {
       'id': id,
       'contentType': contentType,
       'progress': progress,
     });
+  }
+
+  Future<void> deleteHistory(String whitelabel) async {
+    await postData('v3/content/progress/clear', whitelabel);
   }
 }

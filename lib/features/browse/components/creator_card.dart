@@ -18,8 +18,13 @@ class CreatorCardState extends State<CreatorCard> {
 
   @override
   Widget build(BuildContext context) {
-    final thumbnailUrl =
-        widget.creator.featuredBlogPosts?.first.thumbnail?.path;
+    String thumbnailUrl;
+    if (widget.creator.featuredBlogPosts?.isNotEmpty ?? false) {
+      thumbnailUrl =
+          widget.creator.featuredBlogPosts?.first.thumbnail?.path ?? '';
+    } else {
+      thumbnailUrl = widget.creator.icon.path ?? '';
+    }
 
     return Stack(
       children: [
@@ -116,8 +121,7 @@ class CreatorCardState extends State<CreatorCard> {
                             ),
                             child: Row(
                               children: [
-                                if (thumbnailUrl != null &&
-                                    thumbnailUrl.isNotEmpty)
+                                if (thumbnailUrl.isNotEmpty)
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(6),
                                     child: Image.network(

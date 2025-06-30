@@ -44,13 +44,23 @@ class DeepLinkService {
 
     if (_router == null) return;
 
-    if (_ignoredPaths.any((path) => uri.path.startsWith(path))) {
-      debugPrint('Ignoring deep link to ${uri.path}');
+    // Extract the path, handling both http:// and floaty:// schemes
+    String path = uri.path;
+    
+    // If the URL is a floaty:// URL, we might need to handle it differently
+    if (uri.scheme == 'floaty' && uri.host.isNotEmpty) {
+      // Handle floaty://host/path as /path
+      path = '/${uri.host}${uri.path}';
+    }
+
+    // Check if this is a path we should ignore
+    if (_ignoredPaths.any((ignoredPath) => path.startsWith(ignoredPath))) {
+      debugPrint('Ignoring deep link to $path');
       return;
     }
 
     try {
-      final path = uri.path;
+      debugPrint('Processing path: $path');
 
       if (path.startsWith('/post/')) {
         final postId = path.split('/post/')[1];
@@ -64,11 +74,17 @@ class DeepLinkService {
               ? '/channel/$channelName/$subName'
               : '/channel/$channelName');
         }
-      } else if (path == '/home' || path == '/') {
+      } else if (path == '/home' || path == '/' || path.isEmpty) {
+        _router?.go('/');
+      } else {
+        // Handle other paths or show a 404 page
+        debugPrint('No specific handler for path: $path');
         _router?.go('/');
       }
     } catch (e) {
       debugPrint('Error handling deep link: $e');
+      // Fallback to home page on error
+      _router?.go('/');
     }
   }
 

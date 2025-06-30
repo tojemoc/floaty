@@ -1,5 +1,6 @@
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 
@@ -34,7 +35,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _loadHistory();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      rootLayoutKey.currentState?.setAppBar(const Text('History'));
+      rootLayoutKey.currentState?.setAppBar(const Text('History'), actions: [
+        IconButton(
+          icon: const Icon(Icons.delete),
+          onPressed: () => showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete entire watch history?'),
+              content: const Text(
+                  'Are you sure you want to delete your watch history?\nThis action cannot be undone.'),
+              actions: [
+                TextButton(
+                  child: Text('Cancel'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                TextButton(
+                  child: Text('Delete'),
+                  onPressed: () async {
+                    await fpApiRequests.deleteHistory(
+                        (await whitelabels.getSelectedWhitelabel())
+                            .friendlyName);
+                    _loadHistory(true);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ]);
     });
   }
 
@@ -148,7 +177,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
 
     try {
-      final items = await fpApiRequests.getHistory(offset: _offset);
+      final items = await fpApiRequests.getHistory(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
+          offset: _offset);
       final newSections = _processHistoryItems(items);
 
       if (!mounted) return;
@@ -165,7 +196,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             }
           });
         }
-        _hasMore = items.isNotEmpty; // Continue loading if we got any items
+        _hasMore = items.length == 19;
         _offset += items.length;
         _isLoading = false;
         _error = null;

@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:floaty/features/authentication/repositories/login_api.dart';
 import 'package:floaty/main.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
@@ -94,6 +98,15 @@ class SettingsListScreen extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold))),
           ListTile(
             selected:
+                GoRouterState.of(context).uri.path == '/settings/accounts',
+            leading: Icon(Icons.switch_account),
+            title: Text('Accounts'),
+            onTap: () {
+              context.go('/settings/accounts');
+            },
+          ),
+          ListTile(
+            selected:
                 GoRouterState.of(context).uri.path == '/settings/appearance',
             leading: Icon(Icons.brush),
             title: Text('Appearance'),
@@ -156,6 +169,10 @@ class SettingsListScreen extends StatelessWidget {
               await cookieJar.deleteAll();
               final hiveStore = HiveCacheStore('${dir.path}/.dio_cache');
               await hiveStore.clean();
+              await loginApi.logout(
+                  (await whitelabels.getSelectedWhitelabel()).friendlyName);
+              await whitelabels.removeLoggedInLabel(
+                  (await whitelabels.getSelectedWhitelabel()).friendlyName);
               if (context.mounted) {
                 context.go('/login');
               }
@@ -184,11 +201,15 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 
   void getdata() async {
-    final userinfo = await fpApiRequests.getUserInfo();
-    setState(() {
-      isLoading = false;
-      user = userinfo;
-    });
+    final userinfo = await fpApiRequests.getUserInfo(
+      (await whitelabels.getSelectedWhitelabel()).friendlyName,
+    );
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+        user = userinfo;
+      });
+    }
   }
 
   @override
@@ -225,19 +246,19 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                       CircleAvatar(
                         radius: 50,
                         foregroundImage: CachedNetworkImageProvider(
-                          user?['selfUser']['profileImage']['path'] ?? '',
+                          user?['selfUser']?['profileImage']?['path'] ?? '',
                         ),
                         backgroundImage: AssetImage('assets/placeholder.png'),
                       ),
                       SizedBox(height: 20),
-                      AutoSizeText(user?['selfUser']['username'] ?? 'Unknown',
+                      AutoSizeText(user?['selfUser']?['username'] ?? 'Unknown',
                           style: TextStyle(
                               fontSize: 25, fontWeight: FontWeight.bold),
                           maxLines: 2,
                           textScaleFactor: 0.99,
                           minFontSize: 2),
                       SizedBox(height: 2),
-                      AutoSizeText(user?['selfUser']['email'] ?? 'Unknown',
+                      AutoSizeText(user?['selfUser']?['email'] ?? 'Unknown',
                           style: TextStyle(fontSize: 12),
                           maxLines: 2,
                           textScaleFactor: 0.99,
@@ -268,7 +289,9 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
   }
 
   void getdata() async {
-    final invoices = await fpApiRequests.getInvoices();
+    final invoices = await fpApiRequests.getInvoices(
+      (await whitelabels.getSelectedWhitelabel()).friendlyName,
+    );
     setState(() {
       isLoading = false;
       this.invoices = invoices;
@@ -917,6 +940,12 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
                 title: 'Pause upon entering background',
                 settingkey: 'pause_on_background',
               ),
+              if (!Platform.isAndroid && !Platform.isIOS)
+                ToggleSetting(
+                  title: 'Discord RPC',
+                  settingkey: 'discord_rpc',
+                  defaultvalue: true,
+                ),
             ],
           ),
         ),
@@ -1100,14 +1129,103 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   }
 }
 
+class AccountsSettingsScreen extends StatefulWidget {
+  const AccountsSettingsScreen({super.key});
+  @override
+  State<AccountsSettingsScreen> createState() => AccountsSettingsScreenState();
+}
+
+class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
+  late final Map<String, dynamic>? user;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    getdata();
+  }
+
+  void getdata() async {
+    final userinfo = await fpApiRequests.getUserInfo(
+      (await whitelabels.getSelectedWhitelabel()).friendlyName,
+    );
+    setState(() {
+      isLoading = false;
+      user = userinfo;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final whiteLabels = whitelabels.getWhitelabels();
+
+    return Scaffold(
+      appBar: MediaQuery.of(context).size.width < 600
+          ? AppBar(
+              elevation: 0,
+              toolbarHeight: 40,
+              backgroundColor: colorScheme.surfaceContainer,
+              surfaceTintColor: colorScheme.surfaceContainer,
+              title: const Text('Accounts'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            )
+          : null,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: ListView.builder(
+            itemCount: whiteLabels.length,
+            itemBuilder: (context, index) {
+              final whitelabel = whiteLabels[index];
+              return FutureBuilder(
+                future: whitelabels.getLoggedInLabels(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+                  return ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(100),
+                      child: Image.asset(
+                        whitelabel.logoPath,
+                      ),
+                    ),
+                    title: Text(whitelabel.name),
+                    subtitle: Text(
+                        'Logged In (${snapshot.data!.contains(whitelabel.friendlyName) ? 'Yes' : 'No'})'),
+                    trailing: ElevatedButton(
+                      onPressed: () {
+                        //TODO:
+                      },
+                      child: const Text('Logout'),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ToggleSetting extends StatefulWidget {
   const ToggleSetting({
     super.key,
     required this.title,
     required this.settingkey,
+    this.defaultvalue,
   });
   final String title;
   final String settingkey;
+  final bool? defaultvalue;
   @override
   State<ToggleSetting> createState() => _ToggleSettingState();
 }
@@ -1122,12 +1240,12 @@ class _ToggleSettingState extends State<ToggleSetting> {
         return ListTile(
           title: Text(widget.title),
           trailing: Switch(
-            value: newval ?? (snapshot.data ?? false),
-            onChanged: (v) => {
-              settings.toggleBool(widget.settingkey),
+            value: newval ?? (snapshot.data ?? widget.defaultvalue ?? false),
+            onChanged: (v) {
+              settings.toggleBool(widget.settingkey);
               setState(() {
                 newval = v;
-              }),
+              });
             },
           ),
         );

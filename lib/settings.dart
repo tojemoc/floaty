@@ -1,3 +1,4 @@
+import 'package:floaty/whitelabels.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:path_provider/path_provider.dart';
@@ -63,19 +64,24 @@ class Settings {
     return box.containsKey(key);
   }
 
-  Future<String?> getAuthTokenFromCookieJar() async {
+  Future<String?> getAuthTokenFromCookieJar(
+      {String? whitelabelFriendlyName}) async {
     final dir = await getApplicationSupportDirectory();
     final cookieJar = PersistCookieJar(
       storage: FileStorage('${dir.path}/.cookies/'),
     );
 
-    final uri = Uri.parse('https://www.floatplane.com');
+    final whitelabel = whitelabelFriendlyName != null
+        ? whitelabels.getWhitelabel(whitelabelFriendlyName)
+        : (await whitelabels.getSelectedWhitelabel());
+
+    final uri = Uri.parse(whitelabel.apiUrl);
     final cookies = await cookieJar.loadForRequest(uri);
 
     Cookie? authCookie;
     try {
       authCookie = cookies.firstWhere(
-        (c) => c.name == 'sails.sid',
+        (c) => c.name == whitelabel.cookieName,
       );
     } catch (_) {
       authCookie = null;
