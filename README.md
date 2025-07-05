@@ -51,6 +51,9 @@ cd floaty
 
 ### 3. Install dependencies
 
+Some dependencies rely on Rust, install Rust first by following the official guide:  
+➡️ [Rust Installation Guide](https://www.rust-lang.org/tools/install)
+
 ```bash
 flutter pub get
 ```
