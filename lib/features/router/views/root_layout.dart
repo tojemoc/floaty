@@ -149,7 +149,7 @@ class RootLayoutState extends ConsumerState<RootLayout>
                 return Container(
                   color: Theme.of(context).colorScheme.surfaceContainer,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(vertical: 4.5),
                     child: Switcher(
                       whitelabels: whitelabels.getWhitelabels(),
                       onSwitch: (whitelabel) {
