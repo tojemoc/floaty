@@ -148,32 +148,35 @@ class RootLayoutState extends ConsumerState<RootLayout>
               if (snapshot.data! > 1) {
                 return Container(
                   color: Theme.of(context).colorScheme.surfaceContainer,
-                  child: Switcher(
-                    whitelabels: whitelabels.getWhitelabels(),
-                    onSwitch: (whitelabel) {
-                      ref.read(rootProvider.notifier).loadsidebar();
-                      final currentPath = GoRouterState.of(context).uri.path;
-                      if (currentPath.startsWith('/post/') ||
-                          currentPath.startsWith('/channel/')) {
-                        // If current route is /post or /channel, go to home
-                        context.pushReplacement(
-                            '/home?time=${DateTime.now().millisecondsSinceEpoch}');
-                        ref
-                            .read(mediaPlayerServiceProvider.notifier)
-                            .changeState(MediaPlayerState.none);
-                      } else {
-                        // Otherwise, refresh the current page
-                        final location =
-                            GoRouterState.of(context).uri.toString();
-                        context.pushReplacement(
-                            '$location?time=${DateTime.now().millisecondsSinceEpoch}');
-                        ref
-                            .read(mediaPlayerServiceProvider.notifier)
-                            .changeState(MediaPlayerState.none);
-                      }
-                    },
-                    sidebar: true,
-                    compact: isSidebarCollapsed,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Switcher(
+                      whitelabels: whitelabels.getWhitelabels(),
+                      onSwitch: (whitelabel) {
+                        ref.read(rootProvider.notifier).loadsidebar();
+                        final currentPath = GoRouterState.of(context).uri.path;
+                        if (currentPath.startsWith('/post/') ||
+                            currentPath.startsWith('/channel/')) {
+                          // If current route is /post or /channel, go to home
+                          context.pushReplacement(
+                              '/home?time=${DateTime.now().millisecondsSinceEpoch}');
+                          ref
+                              .read(mediaPlayerServiceProvider.notifier)
+                              .changeState(MediaPlayerState.none);
+                        } else {
+                          // Otherwise, refresh the current page
+                          final location =
+                              GoRouterState.of(context).uri.toString();
+                          context.pushReplacement(
+                              '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                          ref
+                              .read(mediaPlayerServiceProvider.notifier)
+                              .changeState(MediaPlayerState.none);
+                        }
+                      },
+                      sidebar: true,
+                      compact: isSidebarCollapsed,
+                    ),
                   ),
                 );
               }
