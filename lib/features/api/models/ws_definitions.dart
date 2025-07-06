@@ -1,5 +1,4 @@
 import 'package:json_annotation/json_annotation.dart';
-import 'package:floaty/features/api/utils/ws_definitions_helpers.dart';
 
 part 'ws_definitions.g.dart';
 
@@ -75,9 +74,7 @@ class RunningTally {
 /// Tally at a point in time
 @JsonSerializable()
 class TallyUpdate {
-  @JsonKey(
-      fromJson: stringOrRunningTallyFromJson,
-      toJson: stringOrRunningTallyToJson)
+  @JsonKey(name: 'tick')
   final int tick;
   final List<int> counts;
   final String pollId;

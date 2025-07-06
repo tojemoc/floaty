@@ -274,16 +274,18 @@ class ChannelScreenStateWrapperState
           .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
               urlname: widget.channelName)
           .listen((creator) {
-        setState(() {
-          channel = creator;
-          rootchannel = creator;
-          rootLayoutKey.currentState?.setAppBar(Text(channel.title));
+        if (mounted) {
+          setState(() {
+            channel = creator;
+            rootchannel = creator;
+            rootLayoutKey.currentState?.setAppBar(Text(channel.title));
 
-          if (!statsFetched && rootchannel.id != null) {
-            statsFetched = true;
-            getStats();
-          }
-        });
+            if (!statsFetched && rootchannel.id != null) {
+              statsFetched = true;
+              getStats();
+            }
+          });
+        }
       });
     }
   }

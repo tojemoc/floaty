@@ -2,8 +2,6 @@
 
 // ignore_for_file: unused_element
 
-// ignore_for_file: unused_element
-
 part of 'ws_definitions.dart';
 
 // **************************************************************************
@@ -62,7 +60,7 @@ Map<String, dynamic> _$RunningTallyToJson(RunningTally instance) =>
     };
 
 TallyUpdate _$TallyUpdateFromJson(Map<String, dynamic> json) => TallyUpdate(
-      tick: stringOrRunningTallyFromJson(json['tick']),
+      tick: (json['tick'] as num).toInt(),
       counts: (json['counts'] as List<dynamic>)
           .map((e) => (e as num).toInt())
           .toList(),
@@ -71,7 +69,7 @@ TallyUpdate _$TallyUpdateFromJson(Map<String, dynamic> json) => TallyUpdate(
 
 Map<String, dynamic> _$TallyUpdateToJson(TallyUpdate instance) =>
     <String, dynamic>{
-      'tick': stringOrRunningTallyToJson(instance.tick),
+      'tick': instance.tick,
       'counts': instance.counts,
       'pollId': instance.pollId,
     };

@@ -30,8 +30,24 @@ class _SwitcherState extends State<Switcher> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.5);
+    _pageController = PageController(
+      viewportFraction: 0.5,
+      initialPage: 0, // Initialize with a safe default
+    );
     _initializeSwitcher();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Ensure the PageView is built before trying to animate
+    if (widget.compact && !isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients && mounted) {
+          _pageController.jumpToPage(_currentPage);
+        }
+      });
+    }
   }
 
   Future<void> _initializeSwitcher() async {
@@ -40,17 +56,14 @@ class _SwitcherState extends State<Switcher> {
         .indexWhere(
           (w) => w.friendlyName == selectedWhitelabel.friendlyName,
         )
-        .clamp(0, widget.whitelabels.length - 1);
+        .clamp(0,
+            widget.whitelabels.isNotEmpty ? widget.whitelabels.length - 1 : 0);
 
     if (mounted) {
       setState(() {
         selected = selectedWhitelabel.friendlyName;
         isLoading = false;
       });
-
-      if (widget.compact) {
-        _pageController.jumpToPage(_currentPage);
-      }
     }
   }
 
@@ -68,38 +81,48 @@ class _SwitcherState extends State<Switcher> {
   }
 
   Widget _buildHorizontalSwitcher() {
-    return Scrollbar(
-      thumbVisibility: true,
-      trackVisibility: true,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: widget.whitelabels.map((whitelabel) {
-          return Row(
-            children: [
-              _buildLogoButton(
-                whitelabel: whitelabel,
-                isSelected: selected == whitelabel.friendlyName,
-                isHovered: hoveredItem == whitelabel.friendlyName,
-                currentHovered: hoveredItem,
-                onHover: (isHovered) {
-                  setState(() {
-                    hoveredItem = isHovered ? whitelabel.friendlyName : null;
-                  });
-                },
-                onTap: _handleWhitelabelTap(whitelabel.friendlyName),
-              ),
-              if (widget.whitelabels.indexOf(whitelabel) + 1 <
-                  widget.whitelabels.length)
-                const SizedBox(width: 5),
-            ],
-          );
-        }).toList(),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: constraints.maxWidth,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: widget.whitelabels.map((whitelabel) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                  child: _buildLogoButton(
+                    whitelabel: whitelabel,
+                    isSelected: selected == whitelabel.friendlyName,
+                    isHovered: hoveredItem == whitelabel.friendlyName,
+                    currentHovered: hoveredItem,
+                    onHover: (isHovered) {
+                      setState(() {
+                        hoveredItem =
+                            isHovered ? whitelabel.friendlyName : null;
+                      });
+                    },
+                    onTap: _handleWhitelabelTap(whitelabel.friendlyName),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildCarouselSwitcher() {
+    if (widget.whitelabels.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return SizedBox(
       height: 45,
       child: Stack(
@@ -124,13 +147,17 @@ class _SwitcherState extends State<Switcher> {
           PageView.builder(
             controller: _pageController,
             onPageChanged: (index) {
-              if (index != _currentPage) {
+              if (index < widget.whitelabels.length && index != _currentPage) {
                 final whitelabel = widget.whitelabels[index];
                 _handleWhitelabelTap(whitelabel.friendlyName)();
               }
             },
             itemCount: widget.whitelabels.length,
             itemBuilder: (context, index) {
+              if (index >= widget.whitelabels.length) {
+                return const SizedBox.shrink();
+              }
+
               final whitelabel = widget.whitelabels[index];
               final isSelected = whitelabel.friendlyName == selected;
 
@@ -171,17 +198,20 @@ class _SwitcherState extends State<Switcher> {
     return () {
       final newIndex =
           widget.whitelabels.indexWhere((w) => w.friendlyName == friendlyName);
-      if (newIndex != -1) {
+      if (newIndex != -1 && mounted) {
         setState(() {
           selected = friendlyName;
           _currentPage = newIndex;
         });
-        if (widget.compact) {
-          _pageController.animateToPage(
-            newIndex,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
+        if (widget.compact && _pageController.hasClients) {
+          // Only animate if the page is not already at the target index
+          if (_pageController.page?.round() != newIndex) {
+            _pageController.animateToPage(
+              newIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          }
         }
         settings.setKey('whitelabel', friendlyName);
         widget.onSwitch(friendlyName);
@@ -199,9 +229,8 @@ class _SwitcherState extends State<Switcher> {
     double? size,
   }) {
     final bool shouldHighlight = isSelected;
-    final double targetSize = size ?? (widget.sidebar ? 35.0 : 55.0);
-    final double scale =
-        shouldHighlight ? 1.0 : (widget.sidebar ? 25.0 / 35.0 : 45.0 / 55.0);
+    final double targetSize = size ?? (widget.sidebar ? 35.0 : 45.0);
+    final double scale = shouldHighlight ? 1.0 : 0.85;
 
     return MouseRegion(
       onEnter: (_) => onHover(true),

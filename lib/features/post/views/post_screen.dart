@@ -1641,7 +1641,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   Widget _buildRecommendedSection(BoxConstraints constraints,
       {required ScreenLayout layout}) {
     final width = layout == ScreenLayout.wide ? 300.0 : constraints.maxWidth;
-    final childAspectRatio = constraints.maxWidth <= 450 ? 1.2 : 1.175;
     final padding = constraints.maxWidth <= 450 ? 4.0 : 2.0;
 
     return SizedBox(
@@ -1659,16 +1658,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               ),
             ),
           ),
-          GridView.builder(
+          ListView.builder(
             shrinkWrap: true,
             physics: const ClampingScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent:
-                  constraints.maxWidth <= 450 ? constraints.maxWidth : 300,
-              crossAxisSpacing: 4,
-              mainAxisSpacing: 4,
-              childAspectRatio: childAspectRatio,
-            ),
             itemCount:
                 ref.read(postProvider(widget.postId)).recommendedPosts.length,
             itemBuilder: (context, index) {

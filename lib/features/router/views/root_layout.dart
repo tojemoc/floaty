@@ -3,7 +3,7 @@ import 'package:floaty/features/router/components/sidebar_channel_item.dart';
 import 'package:floaty/features/router/components/sidebar_item.dart';
 import 'package:floaty/features/router/components/sidebar_size_control.dart';
 import 'package:floaty/features/router/components/sidebar_text.dart';
-import 'package:floaty/shared/widgets/switcher.dart';
+import 'package:floaty/shared/components/switcher.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -139,24 +139,42 @@ class RootLayoutState extends ConsumerState<RootLayout>
               ),
             ),
           ),
-          Switcher(
-            whitelabels: whitelabels.getWhitelabels(),
-            onSwitch: (whitelabel) {
-              ref.read(rootProvider.notifier).loadsidebar();
-              final currentPath = GoRouterState.of(context).uri.path;
-              if (currentPath.startsWith('/post/') ||
-                  currentPath.startsWith('/channel/')) {
-                // If current route is /post or /channel, go to home
-                context.go('/home');
-              } else {
-                // Otherwise, refresh the current page
-                final location = GoRouterState.of(context).uri.toString();
-                context.replace(
-                    '$location?time=${DateTime.now().millisecondsSinceEpoch}, ${DateTime.now().millisecondsSinceEpoch}');
+          FutureBuilder(
+            future: whitelabels.getLoggedInLabelsLength(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox.shrink();
               }
+              if (snapshot.data! > 1) {
+                return Switcher(
+                  whitelabels: whitelabels.getWhitelabels(),
+                  onSwitch: (whitelabel) {
+                    ref.read(rootProvider.notifier).loadsidebar();
+                    final currentPath = GoRouterState.of(context).uri.path;
+                    if (currentPath.startsWith('/post/') ||
+                        currentPath.startsWith('/channel/')) {
+                      // If current route is /post or /channel, go to home
+                      context.pushReplacement(
+                          '/home?time=${DateTime.now().millisecondsSinceEpoch}');
+                      ref
+                          .read(mediaPlayerServiceProvider.notifier)
+                          .changeState(MediaPlayerState.none);
+                    } else {
+                      // Otherwise, refresh the current page
+                      final location = GoRouterState.of(context).uri.toString();
+                      context.pushReplacement(
+                          '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                      ref
+                          .read(mediaPlayerServiceProvider.notifier)
+                          .changeState(MediaPlayerState.none);
+                    }
+                  },
+                  sidebar: true,
+                  compact: isSidebarCollapsed,
+                );
+              }
+              return const SizedBox.shrink();
             },
-            sidebar: true,
-            compact: isSidebarCollapsed,
           ),
           Column(
             children: [

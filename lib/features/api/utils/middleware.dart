@@ -15,28 +15,33 @@ class Middleware {
         : whitelabels.getWhitelabels();
 
     for (var whitelabel in whitelabelsToCheck) {
-      try {
-        final uri = Uri.parse(whitelabel.apiUrl);
-        final cookies = await cookieJar.loadForRequest(uri);
+      final uri = Uri.parse('https://www.${whitelabel.domain}/');
+      final cookies = await cookieJar.loadForRequest(uri);
 
-        final authCookie = cookies.firstWhere(
-          (c) => c.name == whitelabel.cookieName,
-          orElse: () => throw Exception('No auth cookie'),
-        );
+      final authCookie = cookies.firstWhere(
+        (c) => c.name == whitelabel.cookieName,
+        orElse: () => Cookie('', ''),
+      );
 
-        if (authCookie.expires != null &&
-            authCookie.expires!.isAfter(DateTime.now())) {
-          return true;
-        }
-      } catch (_) {
-        if (whitelabelFriendlyName != null) {
-          return false;
-        }
+      if ((await settings
+              .getBool('optional-${whitelabel.friendlyName}-2faRequired')) ==
+          true) {
         continue;
       }
-    }
 
-    return whitelabelFriendlyName != null;
+      if (authCookie.name.isEmpty || authCookie.value.isEmpty) {
+        return false;
+      }
+
+      if (authCookie.expires != null &&
+          authCookie.expires!.isAfter(DateTime.now())) {
+        return true;
+      } else {
+        cookieJar.delete(uri);
+        await whitelabels.removeLoggedInLabel(whitelabel.friendlyName);
+      }
+    }
+    return false;
   }
 
   Future<bool> twoFAAuthenticated({String? whitelabelFriendlyName}) async {

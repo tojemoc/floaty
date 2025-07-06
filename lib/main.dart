@@ -1,4 +1,3 @@
-import 'package:floaty/features/authentication/repositories/login_api.dart';
 import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
 import 'package:floaty/features/discordrpc/discord_rpc_controller.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
@@ -99,10 +98,6 @@ void main() async {
 
   getIt.registerSingleton<WhenPlaneIntegration>(
     WhenPlaneIntegration(),
-  );
-
-  getIt.registerSingleton<LoginApi>(
-    LoginApi(),
   );
 
   getIt.registerSingleton<UpdaterController>(

@@ -152,171 +152,172 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
                     });
                   },
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  itemBuilder: (context) => [
-                    if (widget.textTracks?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'subtitles',
-                        child: PopupMenuButton<int>(
-                          child: const Text('Subtitles'),
-                          itemBuilder: (context) =>
-                              widget.textTracks!.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final track = entry.value;
-                            return PopupMenuItem<int>(
-                              value: index,
-                              child: Row(
-                                children: [
-                                  Text(track['language'] ?? 'Unknown'),
-                                  if (index ==
-                                      _mediaService.currentSubtitleTrackIndex)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (index) {
-                            _mediaService.setSubtitleTrack(index);
-                          },
-                        ),
-                      ),
-                    if (widget.qualities?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'quality',
-                        child: PopupMenuButton<VideoQuality>(
-                          child: Text('Quality'),
-                          itemBuilder: (context) =>
-                              widget.qualities!.map((quality) {
-                            return PopupMenuItem<VideoQuality>(
-                              value: quality,
-                              child: Row(
-                                children: [
-                                  Text(quality.label),
-                                  if (quality == _mediaService.currentQuality)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (quality) {
-                            _mediaService.changeQuality(quality);
-                          },
-                        ),
-                      ),
-                    PopupMenuItem<String>(
-                      value: 'playback_speed',
-                      child: PopupMenuButton<double>(
-                        child: Text('Playback Speed'),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                              value: 0.5,
-                              child: Row(
-                                children: [
-                                  Text('0.5x'),
-                                  if (speedvar == 0.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.0,
-                              child: Row(
-                                children: [
-                                  Text('1.0x'),
-                                  if (speedvar == 1.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.25,
-                              child: Row(
-                                children: [
-                                  Text('1.25x'),
-                                  if (speedvar == 1.25)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.5,
-                              child: Row(
-                                children: [
-                                  Text('1.5x'),
-                                  if (speedvar == 1.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.75,
-                              child: Row(
-                                children: [
-                                  Text('1.75x'),
-                                  if (speedvar == 1.75)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 2.0,
-                              child: Row(
-                                children: [
-                                  Text('2.0x'),
-                                  if (speedvar == 2.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                            value: speedvar,
-                            child: Row(
-                              children: [
-                                Text('Custom'),
-                                // we don't talk about this
-                                if (speedvar != 0.5 &&
-                                    speedvar != 1.0 &&
-                                    speedvar != 1.25 &&
-                                    speedvar != 1.5 &&
-                                    speedvar != 1.75 &&
-                                    speedvar != 2.0)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8.0),
-                                    child: Icon(Icons.check, size: 16),
-                                  ),
-                              ],
-                            ),
-                            onTap: () => _showCustomSpeedDialog(context),
+                if (mounted)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    itemBuilder: (context) => [
+                      if (widget.textTracks?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'subtitles',
+                          child: PopupMenuButton<int>(
+                            child: const Text('Subtitles'),
+                            itemBuilder: (context) =>
+                                widget.textTracks!.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final track = entry.value;
+                              return PopupMenuItem<int>(
+                                value: index,
+                                child: Row(
+                                  children: [
+                                    Text(track['language'] ?? 'Unknown'),
+                                    if (index ==
+                                        _mediaService.currentSubtitleTrackIndex)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (index) {
+                              _mediaService.setSubtitleTrack(index);
+                            },
                           ),
-                        ],
-                        onSelected: (speed) {
-                          _mediaService.setSpeed(speed);
-                          speedvar = speed;
-                        },
+                        ),
+                      if (widget.qualities?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'quality',
+                          child: PopupMenuButton<VideoQuality>(
+                            child: Text('Quality'),
+                            itemBuilder: (context) =>
+                                widget.qualities!.map((quality) {
+                              return PopupMenuItem<VideoQuality>(
+                                value: quality,
+                                child: Row(
+                                  children: [
+                                    Text(quality.label),
+                                    if (quality == _mediaService.currentQuality)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (quality) {
+                              _mediaService.changeQuality(quality);
+                            },
+                          ),
+                        ),
+                      PopupMenuItem<String>(
+                        value: 'playback_speed',
+                        child: PopupMenuButton<double>(
+                          child: Text('Playback Speed'),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                                value: 0.5,
+                                child: Row(
+                                  children: [
+                                    Text('0.5x'),
+                                    if (speedvar == 0.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.0,
+                                child: Row(
+                                  children: [
+                                    Text('1.0x'),
+                                    if (speedvar == 1.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.25,
+                                child: Row(
+                                  children: [
+                                    Text('1.25x'),
+                                    if (speedvar == 1.25)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.5,
+                                child: Row(
+                                  children: [
+                                    Text('1.5x'),
+                                    if (speedvar == 1.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.75,
+                                child: Row(
+                                  children: [
+                                    Text('1.75x'),
+                                    if (speedvar == 1.75)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 2.0,
+                                child: Row(
+                                  children: [
+                                    Text('2.0x'),
+                                    if (speedvar == 2.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                              value: speedvar,
+                              child: Row(
+                                children: [
+                                  Text('Custom'),
+                                  // we don't talk about this
+                                  if (speedvar != 0.5 &&
+                                      speedvar != 1.0 &&
+                                      speedvar != 1.25 &&
+                                      speedvar != 1.5 &&
+                                      speedvar != 1.75 &&
+                                      speedvar != 2.0)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8.0),
+                                      child: Icon(Icons.check, size: 16),
+                                    ),
+                                ],
+                              ),
+                              onTap: () => _showCustomSpeedDialog(context),
+                            ),
+                          ],
+                          onSelected: (speed) {
+                            _mediaService.setSpeed(speed);
+                            speedvar = speed;
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                  onSelected: (value) {},
-                ),
+                    ],
+                    onSelected: (value) {},
+                  ),
                 MaterialDesktopFullscreenButton(),
               ],
             ),
@@ -354,171 +355,172 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
                     });
                   },
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  itemBuilder: (context) => [
-                    if (widget.textTracks?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'subtitles',
-                        child: PopupMenuButton<int>(
-                          child: const Text('Subtitles'),
-                          itemBuilder: (context) =>
-                              widget.textTracks!.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final track = entry.value;
-                            return PopupMenuItem<int>(
-                              value: index,
-                              child: Row(
-                                children: [
-                                  Text(track['language'] ?? 'Unknown'),
-                                  if (index ==
-                                      _mediaService.currentSubtitleTrackIndex)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (index) {
-                            _mediaService.setSubtitleTrack(index);
-                          },
-                        ),
-                      ),
-                    if (widget.qualities?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'quality',
-                        child: PopupMenuButton<VideoQuality>(
-                          child: Text('Quality'),
-                          itemBuilder: (context) =>
-                              widget.qualities!.map((quality) {
-                            return PopupMenuItem<VideoQuality>(
-                              value: quality,
-                              child: Row(
-                                children: [
-                                  Text(quality.label),
-                                  if (quality == _mediaService.currentQuality)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (quality) {
-                            _mediaService.changeQuality(quality);
-                          },
-                        ),
-                      ),
-                    PopupMenuItem<String>(
-                      value: 'playback_speed',
-                      child: PopupMenuButton<double>(
-                        child: Text('Playback Speed'),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                              value: 0.5,
-                              child: Row(
-                                children: [
-                                  Text('0.5x'),
-                                  if (speedvar == 0.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.0,
-                              child: Row(
-                                children: [
-                                  Text('1.0x'),
-                                  if (speedvar == 1.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.25,
-                              child: Row(
-                                children: [
-                                  Text('1.25x'),
-                                  if (speedvar == 1.25)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.5,
-                              child: Row(
-                                children: [
-                                  Text('1.5x'),
-                                  if (speedvar == 1.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.75,
-                              child: Row(
-                                children: [
-                                  Text('1.75x'),
-                                  if (speedvar == 1.75)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 2.0,
-                              child: Row(
-                                children: [
-                                  Text('2.0x'),
-                                  if (speedvar == 2.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                            value: speedvar,
-                            child: Row(
-                              children: [
-                                Text('Custom'),
-                                // we don't talk about this
-                                if (speedvar != 0.5 &&
-                                    speedvar != 1.0 &&
-                                    speedvar != 1.25 &&
-                                    speedvar != 1.5 &&
-                                    speedvar != 1.75 &&
-                                    speedvar != 2.0)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8.0),
-                                    child: Icon(Icons.check, size: 16),
-                                  ),
-                              ],
-                            ),
-                            onTap: () => _showCustomSpeedDialog(context),
+                if (mounted)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    itemBuilder: (context) => [
+                      if (widget.textTracks?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'subtitles',
+                          child: PopupMenuButton<int>(
+                            child: const Text('Subtitles'),
+                            itemBuilder: (context) =>
+                                widget.textTracks!.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final track = entry.value;
+                              return PopupMenuItem<int>(
+                                value: index,
+                                child: Row(
+                                  children: [
+                                    Text(track['language'] ?? 'Unknown'),
+                                    if (index ==
+                                        _mediaService.currentSubtitleTrackIndex)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (index) {
+                              _mediaService.setSubtitleTrack(index);
+                            },
                           ),
-                        ],
-                        onSelected: (speed) {
-                          _mediaService.setSpeed(speed);
-                          speedvar = speed;
-                        },
+                        ),
+                      if (widget.qualities?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'quality',
+                          child: PopupMenuButton<VideoQuality>(
+                            child: Text('Quality'),
+                            itemBuilder: (context) =>
+                                widget.qualities!.map((quality) {
+                              return PopupMenuItem<VideoQuality>(
+                                value: quality,
+                                child: Row(
+                                  children: [
+                                    Text(quality.label),
+                                    if (quality == _mediaService.currentQuality)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (quality) {
+                              _mediaService.changeQuality(quality);
+                            },
+                          ),
+                        ),
+                      PopupMenuItem<String>(
+                        value: 'playback_speed',
+                        child: PopupMenuButton<double>(
+                          child: Text('Playback Speed'),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                                value: 0.5,
+                                child: Row(
+                                  children: [
+                                    Text('0.5x'),
+                                    if (speedvar == 0.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.0,
+                                child: Row(
+                                  children: [
+                                    Text('1.0x'),
+                                    if (speedvar == 1.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.25,
+                                child: Row(
+                                  children: [
+                                    Text('1.25x'),
+                                    if (speedvar == 1.25)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.5,
+                                child: Row(
+                                  children: [
+                                    Text('1.5x'),
+                                    if (speedvar == 1.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.75,
+                                child: Row(
+                                  children: [
+                                    Text('1.75x'),
+                                    if (speedvar == 1.75)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 2.0,
+                                child: Row(
+                                  children: [
+                                    Text('2.0x'),
+                                    if (speedvar == 2.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                              value: speedvar,
+                              child: Row(
+                                children: [
+                                  Text('Custom'),
+                                  // we don't talk about this
+                                  if (speedvar != 0.5 &&
+                                      speedvar != 1.0 &&
+                                      speedvar != 1.25 &&
+                                      speedvar != 1.5 &&
+                                      speedvar != 1.75 &&
+                                      speedvar != 2.0)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8.0),
+                                      child: Icon(Icons.check, size: 16),
+                                    ),
+                                ],
+                              ),
+                              onTap: () => _showCustomSpeedDialog(context),
+                            ),
+                          ],
+                          onSelected: (speed) {
+                            _mediaService.setSpeed(speed);
+                            speedvar = speed;
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                  onSelected: (value) {},
-                ),
+                    ],
+                    onSelected: (value) {},
+                  ),
                 MaterialDesktopFullscreenButton(),
               ],
             ),
@@ -582,170 +584,171 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
                       });
                     },
                   ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  itemBuilder: (context) => [
-                    if (widget.textTracks?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'subtitles',
-                        child: PopupMenuButton<int>(
-                          child: const Text('Subtitles'),
-                          itemBuilder: (context) =>
-                              widget.textTracks!.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final track = entry.value;
-                            return PopupMenuItem<int>(
-                              value: index,
-                              child: Row(
-                                children: [
-                                  Text(track['language'] ?? 'Unknown'),
-                                  if (index ==
-                                      _mediaService.currentSubtitleTrackIndex)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (index) {
-                            _mediaService.setSubtitleTrack(index);
-                          },
-                        ),
-                      ),
-                    if (widget.qualities?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'quality',
-                        child: PopupMenuButton<VideoQuality>(
-                          child: Text('Quality'),
-                          itemBuilder: (context) =>
-                              widget.qualities!.map((quality) {
-                            return PopupMenuItem<VideoQuality>(
-                              value: quality,
-                              child: Row(
-                                children: [
-                                  Text(quality.label),
-                                  if (quality == _mediaService.currentQuality)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (quality) {
-                            _mediaService.changeQuality(quality);
-                          },
-                        ),
-                      ),
-                    PopupMenuItem<String>(
-                      value: 'playback_speed',
-                      child: PopupMenuButton<double>(
-                        child: Text('Playback Speed'),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                              value: 0.5,
-                              child: Row(
-                                children: [
-                                  Text('0.5x'),
-                                  if (speedvar == 0.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.0,
-                              child: Row(
-                                children: [
-                                  Text('1.0x'),
-                                  if (speedvar == 1.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.25,
-                              child: Row(
-                                children: [
-                                  Text('1.25x'),
-                                  if (speedvar == 1.25)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.5,
-                              child: Row(
-                                children: [
-                                  Text('1.5x'),
-                                  if (speedvar == 1.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.75,
-                              child: Row(
-                                children: [
-                                  Text('1.75x'),
-                                  if (speedvar == 1.75)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 2.0,
-                              child: Row(
-                                children: [
-                                  Text('2.0x'),
-                                  if (speedvar == 2.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                            value: speedvar,
-                            child: Row(
-                              children: [
-                                Text('Custom'),
-                                // we don't talk about this
-                                if (speedvar != 0.5 &&
-                                    speedvar != 1.0 &&
-                                    speedvar != 1.25 &&
-                                    speedvar != 1.5 &&
-                                    speedvar != 1.75 &&
-                                    speedvar != 2.0)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8.0),
-                                    child: Icon(Icons.check, size: 16),
-                                  ),
-                              ],
-                            ),
-                            onTap: () => _showCustomSpeedDialog(context),
+                if (mounted)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    itemBuilder: (context) => [
+                      if (widget.textTracks?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'subtitles',
+                          child: PopupMenuButton<int>(
+                            child: const Text('Subtitles'),
+                            itemBuilder: (context) =>
+                                widget.textTracks!.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final track = entry.value;
+                              return PopupMenuItem<int>(
+                                value: index,
+                                child: Row(
+                                  children: [
+                                    Text(track['language'] ?? 'Unknown'),
+                                    if (index ==
+                                        _mediaService.currentSubtitleTrackIndex)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (index) {
+                              _mediaService.setSubtitleTrack(index);
+                            },
                           ),
-                        ],
-                        onSelected: (speed) {
-                          _mediaService.setSpeed(speed);
-                        },
+                        ),
+                      if (widget.qualities?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'quality',
+                          child: PopupMenuButton<VideoQuality>(
+                            child: Text('Quality'),
+                            itemBuilder: (context) =>
+                                widget.qualities!.map((quality) {
+                              return PopupMenuItem<VideoQuality>(
+                                value: quality,
+                                child: Row(
+                                  children: [
+                                    Text(quality.label),
+                                    if (quality == _mediaService.currentQuality)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (quality) {
+                              _mediaService.changeQuality(quality);
+                            },
+                          ),
+                        ),
+                      PopupMenuItem<String>(
+                        value: 'playback_speed',
+                        child: PopupMenuButton<double>(
+                          child: Text('Playback Speed'),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                                value: 0.5,
+                                child: Row(
+                                  children: [
+                                    Text('0.5x'),
+                                    if (speedvar == 0.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.0,
+                                child: Row(
+                                  children: [
+                                    Text('1.0x'),
+                                    if (speedvar == 1.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.25,
+                                child: Row(
+                                  children: [
+                                    Text('1.25x'),
+                                    if (speedvar == 1.25)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.5,
+                                child: Row(
+                                  children: [
+                                    Text('1.5x'),
+                                    if (speedvar == 1.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.75,
+                                child: Row(
+                                  children: [
+                                    Text('1.75x'),
+                                    if (speedvar == 1.75)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 2.0,
+                                child: Row(
+                                  children: [
+                                    Text('2.0x'),
+                                    if (speedvar == 2.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                              value: speedvar,
+                              child: Row(
+                                children: [
+                                  Text('Custom'),
+                                  // we don't talk about this
+                                  if (speedvar != 0.5 &&
+                                      speedvar != 1.0 &&
+                                      speedvar != 1.25 &&
+                                      speedvar != 1.5 &&
+                                      speedvar != 1.75 &&
+                                      speedvar != 2.0)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8.0),
+                                      child: Icon(Icons.check, size: 16),
+                                    ),
+                                ],
+                              ),
+                              onTap: () => _showCustomSpeedDialog(context),
+                            ),
+                          ],
+                          onSelected: (speed) {
+                            _mediaService.setSpeed(speed);
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                  onSelected: (value) {},
-                ),
+                    ],
+                    onSelected: (value) {},
+                  ),
                 MaterialFullscreenButton(),
               ],
             ),
@@ -787,170 +790,171 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
                       });
                     },
                   ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  itemBuilder: (context) => [
-                    if (widget.textTracks?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'subtitles',
-                        child: PopupMenuButton<int>(
-                          child: const Text('Subtitles'),
-                          itemBuilder: (context) =>
-                              widget.textTracks!.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final track = entry.value;
-                            return PopupMenuItem<int>(
-                              value: index,
-                              child: Row(
-                                children: [
-                                  Text(track['language'] ?? 'Unknown'),
-                                  if (index ==
-                                      _mediaService.currentSubtitleTrackIndex)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (index) {
-                            _mediaService.setSubtitleTrack(index);
-                          },
-                        ),
-                      ),
-                    if (widget.qualities?.isNotEmpty == true)
-                      PopupMenuItem<String>(
-                        value: 'quality',
-                        child: PopupMenuButton<VideoQuality>(
-                          child: Text('Quality'),
-                          itemBuilder: (context) =>
-                              widget.qualities!.map((quality) {
-                            return PopupMenuItem<VideoQuality>(
-                              value: quality,
-                              child: Row(
-                                children: [
-                                  Text(quality.label),
-                                  if (quality == _mediaService.currentQuality)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onSelected: (quality) {
-                            _mediaService.changeQuality(quality);
-                          },
-                        ),
-                      ),
-                    PopupMenuItem<String>(
-                      value: 'playback_speed',
-                      child: PopupMenuButton<double>(
-                        child: Text('Playback Speed'),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                              value: 0.5,
-                              child: Row(
-                                children: [
-                                  Text('0.5x'),
-                                  if (speedvar == 0.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.0,
-                              child: Row(
-                                children: [
-                                  Text('1.0x'),
-                                  if (speedvar == 1.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.25,
-                              child: Row(
-                                children: [
-                                  Text('1.25x'),
-                                  if (speedvar == 1.25)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.5,
-                              child: Row(
-                                children: [
-                                  Text('1.5x'),
-                                  if (speedvar == 1.5)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 1.75,
-                              child: Row(
-                                children: [
-                                  Text('1.75x'),
-                                  if (speedvar == 1.75)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                              value: 2.0,
-                              child: Row(
-                                children: [
-                                  Text('2.0x'),
-                                  if (speedvar == 2.0)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8.0),
-                                      child: Icon(Icons.check, size: 16),
-                                    ),
-                                ],
-                              )),
-                          PopupMenuItem(
-                            value: speedvar,
-                            child: Row(
-                              children: [
-                                Text('Custom'),
-                                // we don't talk about this
-                                if (speedvar != 0.5 &&
-                                    speedvar != 1.0 &&
-                                    speedvar != 1.25 &&
-                                    speedvar != 1.5 &&
-                                    speedvar != 1.75 &&
-                                    speedvar != 2.0)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8.0),
-                                    child: Icon(Icons.check, size: 16),
-                                  ),
-                              ],
-                            ),
-                            onTap: () => _showCustomSpeedDialog(context),
+                if (mounted)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.settings, color: Colors.white),
+                    itemBuilder: (context) => [
+                      if (widget.textTracks?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'subtitles',
+                          child: PopupMenuButton<int>(
+                            child: const Text('Subtitles'),
+                            itemBuilder: (context) =>
+                                widget.textTracks!.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final track = entry.value;
+                              return PopupMenuItem<int>(
+                                value: index,
+                                child: Row(
+                                  children: [
+                                    Text(track['language'] ?? 'Unknown'),
+                                    if (index ==
+                                        _mediaService.currentSubtitleTrackIndex)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (index) {
+                              _mediaService.setSubtitleTrack(index);
+                            },
                           ),
-                        ],
-                        onSelected: (speed) {
-                          _mediaService.setSpeed(speed);
-                        },
+                        ),
+                      if (widget.qualities?.isNotEmpty == true)
+                        PopupMenuItem<String>(
+                          value: 'quality',
+                          child: PopupMenuButton<VideoQuality>(
+                            child: Text('Quality'),
+                            itemBuilder: (context) =>
+                                widget.qualities!.map((quality) {
+                              return PopupMenuItem<VideoQuality>(
+                                value: quality,
+                                child: Row(
+                                  children: [
+                                    Text(quality.label),
+                                    if (quality == _mediaService.currentQuality)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onSelected: (quality) {
+                              _mediaService.changeQuality(quality);
+                            },
+                          ),
+                        ),
+                      PopupMenuItem<String>(
+                        value: 'playback_speed',
+                        child: PopupMenuButton<double>(
+                          child: Text('Playback Speed'),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                                value: 0.5,
+                                child: Row(
+                                  children: [
+                                    Text('0.5x'),
+                                    if (speedvar == 0.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.0,
+                                child: Row(
+                                  children: [
+                                    Text('1.0x'),
+                                    if (speedvar == 1.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.25,
+                                child: Row(
+                                  children: [
+                                    Text('1.25x'),
+                                    if (speedvar == 1.25)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.5,
+                                child: Row(
+                                  children: [
+                                    Text('1.5x'),
+                                    if (speedvar == 1.5)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 1.75,
+                                child: Row(
+                                  children: [
+                                    Text('1.75x'),
+                                    if (speedvar == 1.75)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                                value: 2.0,
+                                child: Row(
+                                  children: [
+                                    Text('2.0x'),
+                                    if (speedvar == 2.0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Icon(Icons.check, size: 16),
+                                      ),
+                                  ],
+                                )),
+                            PopupMenuItem(
+                              value: speedvar,
+                              child: Row(
+                                children: [
+                                  Text('Custom'),
+                                  // we don't talk about this
+                                  if (speedvar != 0.5 &&
+                                      speedvar != 1.0 &&
+                                      speedvar != 1.25 &&
+                                      speedvar != 1.5 &&
+                                      speedvar != 1.75 &&
+                                      speedvar != 2.0)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 8.0),
+                                      child: Icon(Icons.check, size: 16),
+                                    ),
+                                ],
+                              ),
+                              onTap: () => _showCustomSpeedDialog(context),
+                            ),
+                          ],
+                          onSelected: (speed) {
+                            _mediaService.setSpeed(speed);
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                  onSelected: (value) {},
-                ),
+                    ],
+                    onSelected: (value) {},
+                  ),
                 MaterialFullscreenButton(),
               ],
             ),

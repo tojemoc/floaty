@@ -17,7 +17,6 @@ import 'package:path_provider/path_provider.dart';
 final FPApiRequests fpApiRequests = GetIt.I<FPApiRequests>();
 
 class FPApiRequests {
-  late final Settings settings = settings;
   String userAgent = 'FloatyClient/error, CFNetwork';
   late final PersistCookieJar cookieJar;
   late final Dio _dio;
@@ -690,5 +689,91 @@ class FPApiRequests {
 
   Future<void> deleteHistory(String whitelabel) async {
     await postData('v3/content/progress/clear', whitelabel);
+  }
+
+  Future<Map<String, dynamic>> captcha(String whitelabel) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v3/auth/captcha/info';
+    final response = await _dio.get(
+      url,
+    );
+
+    final resData = jsonDecode(response.data);
+
+    return resData;
+  }
+
+// do not messsage me about this absolute garbage code please - bw86
+// back here like 3 months later because well it broke - bw86 - 20/01/2025
+// migration to dio and cookiejar because my manual system is ass - bw86 - 15/04/2025
+// guess whos back? this time we fix this garbage code once and for all - bw86 - 22/06/2025
+  Future<Map<String, dynamic>> login(
+      String username, String password, String whitelabel,
+      {bool optionalTwoFA = false}) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v2/auth/login';
+
+    final response = await _dio.post(
+      url,
+      data: jsonEncode({
+        'username': username,
+        'password': password,
+      }),
+    );
+
+    final resData = jsonDecode(response.data);
+    print(resData);
+
+    if (response.statusCode == 200) {
+      if (resData['needs2FA'] == true) {
+        if (optionalTwoFA) {
+          await settings.setBool(
+              'optional-${whiteLabel.friendlyName}-2faRequired', true);
+        } else {
+          await settings.setBool(
+              '${whiteLabel.friendlyName}-2faRequired', true);
+        }
+      } else {
+        await whitelabels.addLoggedInLabel(
+            '${whiteLabel.friendlyName}-${resData['user']['id']}');
+      }
+    }
+
+    return resData;
+  }
+
+  Future<Map<String, dynamic>> twofa(String code, String whitelabel,
+      {bool optionalTwoFA = false}) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v2/auth/checkFor2faLogin';
+    final response = await _dio.post(
+      url,
+      data: jsonEncode({
+        'token': code,
+      }),
+    );
+
+    final resData = jsonDecode(response.data);
+
+    if (response.statusCode == 200 && resData['needs2FA'] == false) {
+      if (optionalTwoFA) {
+        await settings.setBool(
+            'optional-${whiteLabel.friendlyName}-2faRequired', false);
+      } else {
+        await settings.setBool("${whiteLabel.friendlyName}-2faRequired", false);
+      }
+      await whitelabels.addLoggedInLabel(
+          '${whiteLabel.friendlyName}-${resData['user']['id']}');
+    }
+    return resData;
+  }
+
+  Future<String> logout(String whitelabel) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v2/auth/logout';
+    final response = await _dio.post(
+      url,
+    );
+    return response.data;
   }
 }

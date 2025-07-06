@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
+import 'package:floaty/features/router/components/custom_list_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,42 +26,43 @@ class PictureSidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      selected: GoRouterState.of(context).uri.path == route,
+    final isSelected = GoRouterState.of(context).uri.path == route;
+    final theme = Theme.of(context);
+
+    return CustomListTile(
+      selected: isSelected,
       leading: AnimatedContainer(
         width: 24,
         height: 24,
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          border: GoRouterState.of(context).uri.path == route
-              ? Border.all(
-                  color: Theme.of(context).colorScheme.primary, width: 2)
+          border: isSelected
+              ? Border.all(color: theme.colorScheme.primary, width: 2)
               : null,
           borderRadius: BorderRadius.circular(100),
         ),
         child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: picture.isNotEmpty
-                ? CachedNetworkImage(
-                    width: 24,
-                    height: 24,
-                    imageUrl: picture,
-                  )
-                : Image.asset('assets/placeholder.png')),
+          borderRadius: BorderRadius.circular(12),
+          child: picture.isNotEmpty
+              ? CachedNetworkImage(
+                  width: 24,
+                  height: 24,
+                  imageUrl: picture,
+                  fit: BoxFit.cover,
+                )
+              : Image.asset('assets/placeholder.png',
+                  width: 24, height: 24, fit: BoxFit.cover),
+        ),
       ),
-      title: isSidebarCollapsed
-          ? null
-          : showText || isSmallScreen
-              ? title.isEmpty
-                  ? Text('Error')
-                  : Text(title)
-              : const SizedBox.shrink(),
+      title:
+          (showText || isSmallScreen) && title.isNotEmpty ? Text(title) : null,
       onTap: onTap ??
           () {
             context.pushReplacement(route);
             scaffoldKey.currentState?.closeDrawer();
           },
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+      isCollapsed: isSidebarCollapsed,
+      minLeadingWidth: 24.0,
     );
   }
 }

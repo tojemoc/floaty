@@ -80,23 +80,51 @@ class Whitelabels {
 
   Future<List<String>> getLoggedInLabels() async {
     final labels = await settings.getKey('LoggedInLabels');
-    return labels.toString().split(',');
+    return labels.toString().split(',').where((e) => e.isNotEmpty).toList();
   }
 
-  Future<List<WhiteLabelWithUser>> getLoggedInUsers() async {
-    final labels = await getLoggedInLabels();
+  Future<List<WhiteLabelWithUser>> getLabelsAndUsers() async {
+    final labels = getWhitelabels();
+    final loggedInLabels = await getLoggedInLabels();
     final users = <WhiteLabelWithUser>[];
     for (var label in labels) {
-      final user = await fpApiRequests.getUserNOS(label.split(',')[0]);
-      final whitelabel = getWhitelabel(label.split(',')[0]);
+      UserSelfV3Response? user;
+      final loggedInLabel = loggedInLabels.firstWhere(
+          (element) => element.split('-')[0] == label.friendlyName,
+          orElse: () => '');
+      if (loggedInLabel.isNotEmpty) {
+        user = await fpApiRequests.getUserNOS(label.friendlyName);
+      }
       users.add(WhiteLabelWithUser(
-        whitelabel: whitelabel,
-        friendlyName: whitelabel.friendlyName,
-        rawName: label,
+        loggedin: loggedInLabel.isNotEmpty,
+        name: label.name,
+        friendlyName: label.friendlyName,
+        rawName: loggedInLabel,
         user: user,
+        whitelabel: label,
       ));
     }
     return users;
+  }
+
+  Future<int> getLoggedInLabelsLength() async {
+    final labels = await getLoggedInLabels();
+    return labels.length;
+  }
+
+  Future<WhiteLabel> getFirstLoggedInLabelOrDefault() async {
+    final labels = await getLoggedInLabels();
+    if (labels.isEmpty) {
+      return whitelabelsList.reduce((a, b) => a.sort < b.sort ? a : b);
+    }
+    
+    // Get all logged-in whitelabels
+    final loggedInWhitelabels = whitelabelsList.where(
+      (whitelabel) => labels.any((label) => label.startsWith(whitelabel.friendlyName)),
+    ).toList();
+    
+    // Return the one with the lowest sort index
+    return loggedInWhitelabels.reduce((a, b) => a.sort < b.sort ? a : b);
   }
 
   Future<void> addLoggedInLabel(String label) async {
@@ -108,9 +136,14 @@ class Whitelabels {
 
   Future<void> removeLoggedInLabel(String label) async {
     var labels = await getLoggedInLabels();
+    label = labels.firstWhere((element) => element.split('-')[0] == label);
     labels.remove(label);
     final labelsString = labels.join(',');
     await settings.setKey('LoggedInLabels', labelsString);
+  }
+
+  Future<void> clearLoggedInLabels() async {
+    await settings.removeKey('LoggedInLabels');
   }
 }
 
@@ -141,15 +174,19 @@ class WhiteLabel {
 }
 
 class WhiteLabelWithUser {
+  final bool loggedin;
   final WhiteLabel whitelabel;
+  final String name;
   final String friendlyName;
-  final String rawName;
-  final UserSelfV3Response user;
+  final String? rawName;
+  final UserSelfV3Response? user;
 
   WhiteLabelWithUser({
+    required this.loggedin,
     required this.whitelabel,
+    required this.name,
     required this.friendlyName,
-    required this.rawName,
-    required this.user,
+    this.rawName,
+    this.user,
   });
 }

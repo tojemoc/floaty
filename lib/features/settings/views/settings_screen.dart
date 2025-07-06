@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:floaty/features/authentication/repositories/login_api.dart';
+import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/main.dart';
+import 'package:floaty/shared/controllers/root_provider.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:floaty/settings.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:floaty/features/authentication/views/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Widget child;
@@ -169,7 +171,7 @@ class SettingsListScreen extends StatelessWidget {
               await cookieJar.deleteAll();
               final hiveStore = HiveCacheStore('${dir.path}/.dio_cache');
               await hiveStore.clean();
-              await loginApi.logout(
+              await fpApiRequests.logout(
                   (await whitelabels.getSelectedWhitelabel()).friendlyName);
               await whitelabels.removeLoggedInLabel(
                   (await whitelabels.getSelectedWhitelabel()).friendlyName);
@@ -1136,7 +1138,8 @@ class AccountsSettingsScreen extends StatefulWidget {
 }
 
 class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
-  late final Map<String, dynamic>? user;
+  late final List<WhiteLabelWithUser> loggedInLabels;
+  Map<String, bool> twoFARequired = {};
   bool isLoading = true;
 
   @override
@@ -1146,19 +1149,20 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   }
 
   void getdata() async {
-    final userinfo = await fpApiRequests.getUserInfo(
-      (await whitelabels.getSelectedWhitelabel()).friendlyName,
-    );
+    final loggedInLabels = await whitelabels.getLabelsAndUsers();
+    for (var label in loggedInLabels) {
+      twoFARequired[label.friendlyName] =
+          await settings.getBool('optional-${label.friendlyName}-2faRequired');
+    }
     setState(() {
+      this.loggedInLabels = loggedInLabels;
       isLoading = false;
-      user = userinfo;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final whiteLabels = whitelabels.getWhitelabels();
 
     return Scaffold(
       appBar: MediaQuery.of(context).size.width < 600
@@ -1174,44 +1178,218 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
               ),
             )
           : null,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: ListView.builder(
-            itemCount: whiteLabels.length,
-            itemBuilder: (context, index) {
-              final whitelabel = whiteLabels[index];
-              return FutureBuilder(
-                future: whitelabels.getLoggedInLabels(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
-                  }
-                  return ListTile(
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(100),
-                      child: Image.asset(
-                        whitelabel.logoPath,
-                      ),
-                    ),
-                    title: Text(whitelabel.name),
-                    subtitle: Text(
-                        'Logged In (${snapshot.data!.contains(whitelabel.friendlyName) ? 'Yes' : 'No'})'),
-                    trailing: ElevatedButton(
-                      onPressed: () {
-                        //TODO:
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: Column(
+                  children: [
+                    ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: loggedInLabels.length,
+                      itemBuilder: (context, index) {
+                        final whitelabel = loggedInLabels[index];
+                        return ListTile(
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(100),
+                            child: Image.asset(
+                              whitelabel.whitelabel.logoPath,
+                            ),
+                          ),
+                          title: Text(whitelabel.name),
+                          subtitle: Text(twoFARequired[
+                                      whitelabel.friendlyName] ==
+                                  true
+                              ? '2FA Required'
+                              : whitelabel.loggedin
+                                  ? 'Logged In (${whitelabel.user!.username})'
+                                  : 'Not Logged In'),
+                          trailing: ElevatedButton(
+                            onPressed: () async {
+                              if (twoFARequired[whitelabel.friendlyName] ==
+                                  true) {
+                                if (context.mounted) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('2FA'),
+                                      content: TwoFAFields(
+                                        twofaCodeController:
+                                            TextEditingController(),
+                                        whitelabel: whitelabel.whitelabel,
+                                        twofa: (String code,
+                                                WhiteLabel whitelabel,
+                                                BuildContext context,
+                                                Function twofacomplete) async =>
+                                            await LoginManager().twofa(
+                                                code,
+                                                whitelabel,
+                                                context,
+                                                twofacomplete,
+                                                optionalTwoFA: true),
+                                        twofacomplete: () {
+                                          if (context.mounted) {
+                                            context.pop();
+
+                                            rootLayoutKey.currentState!.ref
+                                                .read(rootProvider.notifier)
+                                                .loadsidebar();
+                                            final location = GoRouterState.of(
+                                                    rootLayoutKey
+                                                        .currentState!.context)
+                                                .uri
+                                                .toString();
+                                            context.pushReplacement(
+                                                '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } else if (whitelabel.loggedin) {
+                                final dir =
+                                    await getApplicationSupportDirectory();
+                                final cookieJar = PersistCookieJar(
+                                  storage: FileStorage('${dir.path}/.cookies/'),
+                                );
+                                await cookieJar.delete(Uri.parse(
+                                  'https://www.${whitelabel.whitelabel.domain}',
+                                ));
+                                final hiveStore =
+                                    HiveCacheStore('${dir.path}/.dio_cache ');
+                                await hiveStore.deleteFromPath(RegExp(
+                                    'https://www.${whitelabel.whitelabel.domain}'));
+                                await fpApiRequests
+                                    .logout(whitelabel.whitelabel.friendlyName);
+                                await whitelabels.removeLoggedInLabel(
+                                    whitelabel.whitelabel.friendlyName);
+                                if ((await whitelabels
+                                            .getFirstLoggedInLabelOrDefault())
+                                        .friendlyName ==
+                                    (await settings.getKey('whitelabel'))) {
+                                  rootLayoutKey.currentState!.ref
+                                      .read(mediaPlayerServiceProvider.notifier)
+                                      .changeState(MediaPlayerState.none);
+                                }
+                                await settings.setKey(
+                                    'whitelabel',
+                                    (await whitelabels
+                                            .getFirstLoggedInLabelOrDefault())
+                                        .friendlyName);
+                                rootLayoutKey.currentState!.ref
+                                    .read(rootProvider.notifier)
+                                    .loadsidebar();
+                                final location =
+                                    GoRouterState.of(context).uri.toString();
+                                context.pushReplacement(
+                                    '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                if (context.mounted &&
+                                    await whitelabels
+                                            .getLoggedInLabelsLength() ==
+                                        0) {
+                                  context.go('/login');
+                                }
+                              } else {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Login'),
+                                    content: LoginFields(
+                                      usernameController:
+                                          TextEditingController(),
+                                      passwordController:
+                                          TextEditingController(),
+                                      onSubmitted: (username, password, context,
+                                          needstwofa, logincomplete) {
+                                        LoginManager().login(username, password,
+                                            context, needstwofa, logincomplete,
+                                            optionalTwoFA: true,
+                                            whitelabel: whitelabel.whitelabel);
+                                      },
+                                      needstwofa: () {
+                                        if (context.mounted) {
+                                          context.pop();
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('2FA'),
+                                              content: TwoFAFields(
+                                                twofaCodeController:
+                                                    TextEditingController(),
+                                                whitelabel:
+                                                    whitelabel.whitelabel,
+                                                twofa: (String code,
+                                                        WhiteLabel whitelabel,
+                                                        BuildContext context,
+                                                        Function
+                                                            twofacomplete) async =>
+                                                    await LoginManager().twofa(
+                                                        code,
+                                                        whitelabel,
+                                                        context,
+                                                        twofacomplete,
+                                                        optionalTwoFA: true),
+                                                twofacomplete: () {
+                                                  if (context.mounted) {
+                                                    context.pop();
+
+                                                    rootLayoutKey
+                                                        .currentState!.ref
+                                                        .read(rootProvider
+                                                            .notifier)
+                                                        .loadsidebar();
+                                                    final location =
+                                                        GoRouterState.of(
+                                                                rootLayoutKey
+                                                                    .currentState!
+                                                                    .context)
+                                                            .uri
+                                                            .toString();
+                                                    context.pushReplacement(
+                                                        '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      logincomplete: () {
+                                        if (context.mounted) {
+                                          context.pop();
+                                          rootLayoutKey.currentState!.ref
+                                              .read(rootProvider.notifier)
+                                              .loadsidebar();
+                                          final location = GoRouterState.of(
+                                                  rootLayoutKey
+                                                      .currentState!.context)
+                                              .uri
+                                              .toString();
+                                          context.pushReplacement(
+                                              '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Text(
+                                twoFARequired[whitelabel.friendlyName] == true
+                                    ? 'Enter 2FA'
+                                    : whitelabel.loggedin
+                                        ? 'Logout'
+                                        : 'Login'),
+                          ),
+                        );
                       },
-                      child: const Text('Logout'),
                     ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }

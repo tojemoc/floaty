@@ -1,4 +1,5 @@
 import 'package:floaty/shared/controllers/root_provider.dart';
+import 'package:floaty/features/router/components/custom_list_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,20 +25,17 @@ class SidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    return CustomListTile(
       selected: GoRouterState.of(context).uri.path == route,
-      leading: Icon(icon),
-      title: isSidebarCollapsed
-          ? null
-          : showText || isSmallScreen
-              ? Text(title)
-              : const SizedBox.shrink(),
+      leading: Icon(icon, size: 24.0),
+      title: showText || isSmallScreen ? Text(title) : null,
       onTap: onTap ??
           () {
             context.go(route);
             scaffoldKey.currentState?.closeDrawer();
           },
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+      isCollapsed: isSidebarCollapsed,
+      minLeadingWidth: 24.0,
     );
   }
 }

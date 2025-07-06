@@ -5,6 +5,7 @@ import 'package:floaty/shared/controllers/root_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:floaty/features/router/components/custom_list_tile.dart';
 
 class SidebarChannelItem extends ConsumerStatefulWidget {
   final String id;
@@ -33,6 +34,8 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   bool get isExpanded => ref.watch(channelExpansionProvider(widget.id));
+  bool autoClosed = true;
+  bool manualExpansion = false;
 
   @override
   void initState() {
@@ -73,6 +76,7 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
   void _toggleExpansion() {
     ref.read(channelExpansionProvider(widget.id).notifier).state =
         !ref.read(channelExpansionProvider(widget.id));
+    manualExpansion = true;
   }
 
   List<ChannelModel> _sortedChannels(List<ChannelModel> channels) {
@@ -85,49 +89,68 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
     final colorScheme = Theme.of(context).colorScheme;
     bool hasSubChannels = widget.response.channels!.length > 1;
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (GoRouterState.of(context)
+              .uri
+              .path
+              .contains('/channel/${widget.response.urlname}') &&
+          hasSubChannels) {
+        if (autoClosed) {
+          ref.read(channelExpansionProvider(widget.id).notifier).state = true;
+        }
+        autoClosed = false;
+      } else {
+        if (!autoClosed) {
+          ref.read(channelExpansionProvider(widget.id).notifier).state = false;
+          autoClosed = true;
+          manualExpansion = false;
+        }
+      }
+    });
+    final bool isSelected = GoRouterState.of(context).uri.path ==
+        '/channel/${widget.response.urlname}';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ListTile(
-          selected: GoRouterState.of(context).uri.path ==
-              '/channel/${widget.response.urlname}',
+        CustomListTile(
+          selected: isSelected,
+          isCollapsed: widget.isSidebarCollapsed,
           leading: AnimatedContainer(
             width: 24,
             height: 24,
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              border: GoRouterState.of(context).uri.path ==
-                      '/channel/${widget.response.urlname}'
+              border: isSelected
                   ? Border.all(color: colorScheme.primary, width: 2)
                   : null,
               borderRadius: BorderRadius.circular(100),
             ),
             child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: widget.response.icon!.path != null &&
-                        (widget.response.icon!.path ?? '').isNotEmpty
-                    ? CachedNetworkImage(
-                        width: 24,
-                        height: 24,
-                        imageUrl: widget.response.icon!.path ?? '',
-                      )
-                    : Image.asset('assets/placeholder.png')),
+              borderRadius: BorderRadius.circular(12),
+              child: widget.response.icon?.path?.isNotEmpty == true
+                  ? CachedNetworkImage(
+                      width: 24,
+                      height: 24,
+                      imageUrl: widget.response.icon!.path ?? '',
+                    )
+                  : Image.asset('assets/placeholder.png'),
+            ),
           ),
-          title: widget.isSidebarCollapsed
-              ? null
-              : FadeTransition(
+          title: !widget.isSidebarCollapsed
+              ? FadeTransition(
                   opacity: _fadeAnimation,
-                  child: widget.showText || widget.isSmallScreen
+                  child: (widget.showText || widget.isSmallScreen)
                       ? Text(
                           widget.response.title ?? '',
                         )
                       : const SizedBox.shrink(),
-                ),
+                )
+              : null,
           onTap: () {
             context.push('/channel/${widget.response.urlname}');
-            scaffoldKey.currentState?.closeDrawer();
-            if (hasSubChannels) {
-              _toggleExpansion();
+            if (widget.isSmallScreen) {
+              scaffoldKey.currentState?.closeDrawer();
             }
           },
           trailing: hasSubChannels && !widget.isSidebarCollapsed
@@ -139,60 +162,81 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
                       isExpanded ? Icons.expand_less : Icons.expand_more,
                     ),
                     onPressed: _toggleExpansion,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    iconSize: 20,
                   ),
                 )
               : null,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
         ),
         if (hasSubChannels && isExpanded)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: _sortedChannels(widget.response.channels ?? [])
                 .map((subChannel) {
-              return ListTile(
-                selected: GoRouterState.of(context).uri.path ==
-                    '/channel/${widget.response.urlname}/${subChannel.urlname}',
-                leading: Padding(
-                  padding: widget.isSidebarCollapsed
-                      ? const EdgeInsets.only(left: 2.23)
-                      : const EdgeInsets.only(left: 20.0),
-                  child: AnimatedContainer(
-                      width: 22,
-                      height: 22,
+              final bool isSubSelected = GoRouterState.of(context).uri.path ==
+                  '/channel/${widget.response.urlname}/${subChannel.urlname}';
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4.0),
+                child: CustomListTile(
+                  selected: isSubSelected,
+                  isCollapsed: widget.isSidebarCollapsed,
+                  leading: Padding(
+                    padding: widget.isSidebarCollapsed
+                        ? EdgeInsets.zero
+                        : const EdgeInsets.only(left: 20.0),
+                    child: AnimatedContainer(
+                      width: 20,
+                      height: 20,
                       duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        border: GoRouterState.of(context).uri.path ==
-                                '/channel/${widget.response.urlname}/${subChannel.urlname}'
+                        border: isSubSelected
                             ? Border.all(color: colorScheme.primary, width: 2)
                             : null,
                         borderRadius: BorderRadius.circular(100),
                       ),
                       child: ClipRRect(
-                          borderRadius: BorderRadius.circular(11),
-                          child: subChannel.icon!.path != null &&
-                                  (subChannel.icon!.path ?? '').isNotEmpty
-                              ? CachedNetworkImage(
-                                  width: 22,
-                                  height: 22,
-                                  imageUrl: subChannel.icon!.path ?? '',
-                                )
-                              : Image.asset('assets/placeholder.png'))),
-                ),
-                title: widget.isSidebarCollapsed
-                    ? null
-                    : FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: widget.showText || widget.isSmallScreen
-                            ? Text(
-                                subChannel.title ?? '',
+                        borderRadius: BorderRadius.circular(10),
+                        child: subChannel.icon?.path?.isNotEmpty == true
+                            ? CachedNetworkImage(
+                                width: 20,
+                                height: 20,
+                                imageUrl: subChannel.icon!.path!,
                               )
-                            : const SizedBox.shrink(),
+                            : Icon(
+                                Icons.tag,
+                                size: 14,
+                              ),
                       ),
-                onTap: () {
-                  context.push(
-                      '/channel/${widget.response.urlname}/${subChannel.urlname}');
-                  scaffoldKey.currentState?.closeDrawer();
-                },
+                    ),
+                  ),
+                  title: !widget.isSidebarCollapsed
+                      ? FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: (widget.showText || widget.isSmallScreen)
+                              ? Text(
+                                  subChannel.title ?? '',
+                                  style: TextStyle(
+                                    color: isSubSelected
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurfaceVariant,
+                                    fontWeight: isSubSelected
+                                        ? FontWeight.w500
+                                        : FontWeight.normal,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        )
+                      : null,
+                  onTap: () {
+                    context.push(
+                        '/channel/${widget.response.urlname}/${subChannel.urlname}');
+                    if (widget.isSmallScreen) {
+                      scaffoldKey.currentState?.closeDrawer();
+                    }
+                  },
+                ),
               );
             }).toList(),
           ),
