@@ -14,7 +14,7 @@ This repository is the tartar sauce spaghetti code of Floaty.
 | **Livestream Page**        | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Livesteam playback**     | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Live Chat**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
-| **Live Chat Polls**        | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Untested & Only supports 1 poll at once!  |
+| **Live Chat Polls**        | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Untested                                  |
 | **Live Chat Emotes**       | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Floatplane Settings**    | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Some settings are there.                  |
 | **Home Page**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
@@ -50,6 +50,9 @@ cd floaty
 ```
 
 ### 3. Install dependencies
+
+Some dependencies rely on Rust, install Rust first by following the official guide:  
+➡️ [Rust Installation Guide](https://www.rust-lang.org/tools/install)
 
 ```bash
 flutter pub get
