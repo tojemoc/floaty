@@ -2,6 +2,7 @@ import 'package:floaty/features/channel/components/filter_panel.dart';
 import 'package:floaty/features/channel/components/stat_column.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
 import 'package:floaty/settings.dart';
+import 'package:floaty/shared/controllers/root_provider.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,6 +74,8 @@ class ChannelScreenStateWrapperState
   bool _showFloatingNav = false;
   double _scrollThreshold = 0;
   bool legacy = false;
+  bool subscribed = false;
+  WhiteLabel? currentWhitelabel;
 
   int pageloadint = 0;
 
@@ -253,29 +256,41 @@ class ChannelScreenStateWrapperState
       fpApiRequests
           .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
               urlname: widget.channelName)
-          .listen((creator) {
-        setState(() {
-          rootchannel = creator;
-          channel = creator.channels?.firstWhere(
-            (channel) => channel.urlname == widget.subName,
-          );
-          rootLayoutKey.currentState?.setAppBar(Text(channel.title));
+          .listen(
+        (creator) async {
+          if (mounted) {
+            final whitelabel = await whitelabels.getSelectedWhitelabel();
+            setState(() {
+              currentWhitelabel = whitelabel;
+              rootchannel = creator;
+              channel = creator.channels?.firstWhere(
+                (channel) => channel.urlname == widget.subName,
+              );
+              rootLayoutKey.currentState?.setAppBar(Text(channel.title));
 
-          if (!statsFetched && rootchannel.id != null) {
-            statsFetched = true;
-            getStats();
+              if (!statsFetched && rootchannel.id != null) {
+                statsFetched = true;
+                getStats();
+              }
+            });
           }
-        });
-      });
+        },
+      );
     } else {
       isRootChannel = true;
 
       fpApiRequests
           .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
               urlname: widget.channelName)
-          .listen((creator) {
+          .listen((creator) async {
         if (mounted) {
+          final whitelabel = await whitelabels.getSelectedWhitelabel();
           setState(() {
+            currentWhitelabel = whitelabel;
+            subscribed = rootLayoutKey.currentState!.ref
+                .watch(rootProvider)
+                .creators
+                .any((c) => c.id == creator.id);
             channel = creator;
             rootchannel = creator;
             rootLayoutKey.currentState?.setAppBar(Text(channel.title));
@@ -333,125 +348,172 @@ class ChannelScreenStateWrapperState
             ),
           ],
         ),
-        Container(
-          color: colorScheme.surfaceContainer,
-          height: 110,
-          child: Padding(
-            padding: EdgeInsets.only(left: 20),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Container(
+              color: colorScheme.surfaceContainer,
+              height: 110,
+              width: constraints.maxWidth,
+              child: Padding(
+                padding: EdgeInsets.only(left: 20),
+                child: Row(
                   mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisSize: MainAxisSize.max,
                       children: [
-                        CircleAvatar(
-                          backgroundImage: channel?.icon?.path != null &&
-                                  channel?.icon?.path.isNotEmpty
-                              ? CachedNetworkImageProvider(
-                                  channel?.icon?.path!,
-                                )
-                              : AssetImage('assets/placeholder.png'),
-                          radius: 20,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              backgroundImage: channel?.icon?.path != null &&
+                                      channel?.icon?.path.isNotEmpty
+                                  ? CachedNetworkImageProvider(
+                                      channel?.icon?.path!,
+                                    )
+                                  : AssetImage('assets/placeholder.png'),
+                              radius: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  channel?.title ?? 'Channel Name',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  smol
+                                      ? isRootChannel
+                                          ? '${NumberFormat('#,###').format(response['posts'])} Posts'
+                                          : '${NumberFormat('#,###').format(response['channels'].firstWhere((postcount) => postcount['id'] == channel.id)['posts'])} Posts'
+                                      : '${response?['subscribers'] != null ? '${NumberFormat('#,###').format(response['subscribers'])} Subscribers ·' : ''} ${response?['totalIncome'] != null ? '\$${NumberFormat('#,###.00').format(response['totalIncome'])} Per Month ·' : ''} ${isRootChannel ? '${NumberFormat('#,###').format(response['posts'])} Posts' : '${NumberFormat('#,###').format(response['channels'].firstWhere((postcount) => postcount['id'] == channel.id)['posts'])} Posts'}',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.color,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Column(
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              channel?.title ?? 'Channel Name',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              smol
-                                  ? isRootChannel
-                                      ? '${NumberFormat('#,###').format(response['posts'])} Posts'
-                                      : '${NumberFormat('#,###').format(response['channels'].firstWhere((postcount) => postcount['id'] == channel.id)['posts'])} Posts'
-                                  : '${response?['subscribers'] != null ? '${NumberFormat('#,###').format(response['subscribers'])} Subscribers ·' : ''} ${response?['totalIncome'] != null ? '\$${NumberFormat('#,###.00').format(response['totalIncome'])} Per Month ·' : ''} ${isRootChannel ? '${NumberFormat('#,###').format(response['posts'])} Posts' : '${NumberFormat('#,###').format(response['channels'].firstWhere((postcount) => postcount['id'] == channel.id)['posts'])} Posts'}',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.color,
-                                fontSize: 14,
-                              ),
-                            ),
+                            _buildNavButton(colorScheme, "Home", 0, smol: true),
+                            const SizedBox(width: 10),
+                            _buildNavButton(colorScheme, "About", 1,
+                                smol: true),
+                            if (rootchannel?.liveStream != null)
+                              const SizedBox(width: 10),
+                            if (rootchannel?.liveStream != null)
+                              _buildNavButton(colorScheme, "Live", 2,
+                                  smol: true),
                           ],
                         ),
                       ],
                     ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildNavButton(colorScheme, "Home", 0, smol: true),
-                        const SizedBox(width: 10),
-                        _buildNavButton(colorScheme, "About", 1, smol: true),
-                        if (rootchannel?.liveStream != null)
-                          const SizedBox(width: 10),
-                        if (rootchannel?.liveStream != null)
-                          _buildNavButton(colorScheme, "Live", 2, smol: true),
-                      ],
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: SizedBox(
-                    height: 50,
-                    width: 50,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      transitionBuilder:
-                          (Widget child, Animation<double> animation) {
-                        final isSearchIcon = child.key == const ValueKey(false);
-                        return Stack(
-                          children: [
-                            FadeTransition(
-                              opacity: animation,
-                              child: RotationTransition(
-                                turns: isSearchIcon
-                                    ? Tween(begin: 0.5, end: 1.0).animate(
-                                        CurvedAnimation(
-                                            parent: animation,
-                                            curve: Curves.easeInOut))
-                                    : Tween(begin: 1.5, end: 1.0).animate(
-                                        CurvedAnimation(
-                                            parent: animation,
-                                            curve: Curves.easeInOut)),
-                                child: child,
-                              ),
+                    const Spacer(),
+                    if (currentWhitelabel?.features
+                            .contains('freeSubscriptions') ??
+                        false)
+                      FilledButton(
+                        onPressed: () async {
+                          if (subscribed) {
+                            final res = await fpApiRequests.unsubscribe(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                channel?.id ?? '');
+                            if (res == 'OK') {
+                              setState(() {
+                                subscribed = false;
+                              });
+                              if (mounted) {
+                                ref.read(rootProvider.notifier).loadsidebar();
+                              }
+                            }
+                          } else {
+                            await fpApiRequests.subscribe(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                channel?.id ?? '');
+                            setState(() {
+                              subscribed = true;
+                            });
+                            if (mounted) {
+                              ref.read(rootProvider.notifier).loadsidebar();
+                            }
+                          }
+                        },
+                        style: subscribed
+                            ? FilledButton.styleFrom(
+                                backgroundColor:
+                                    colorScheme.surfaceContainerHigh,
+                                foregroundColor: colorScheme.onSurface)
+                            : null,
+                        child: Text(subscribed ? 'Unsubscribe' : 'Subscribe'),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: SizedBox(
+                        height: 50,
+                        width: 50,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 350),
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                            final isSearchIcon =
+                                child.key == const ValueKey(false);
+                            return Stack(
+                              children: [
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: RotationTransition(
+                                    turns: isSearchIcon
+                                        ? Tween(begin: 0.5, end: 1.0).animate(
+                                            CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeInOut))
+                                        : Tween(begin: 1.5, end: 1.0).animate(
+                                            CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeInOut)),
+                                    child: child,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                          child: IconButton(
+                            iconSize: 13,
+                            key: ValueKey(ref.watch(channelScreenProvider
+                                .select((s) => s.searchFieldVisible))),
+                            onPressed: _toggleSearch,
+                            icon: Icon(
+                              ref.watch(channelScreenProvider
+                                      .select((s) => s.searchFieldVisible))
+                                  ? Icons.close
+                                  : Icons.search,
                             ),
-                          ],
-                        );
-                      },
-                      child: IconButton(
-                        iconSize: 13,
-                        key: ValueKey(ref.watch(channelScreenProvider
-                            .select((s) => s.searchFieldVisible))),
-                        onPressed: _toggleSearch,
-                        icon: Icon(
-                          ref.watch(channelScreenProvider
-                                  .select((s) => s.searchFieldVisible))
-                              ? Icons.close
-                              : Icons.search,
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
         Padding(
           padding: EdgeInsets.symmetric(
@@ -623,6 +685,43 @@ class ChannelScreenStateWrapperState
                 ],
               ),
               const Spacer(),
+              if (currentWhitelabel?.features.contains('freeSubscriptions') ??
+                  false)
+                FilledButton(
+                  onPressed: () async {
+                    if (subscribed) {
+                      final res = await fpApiRequests.unsubscribe(
+                          (await whitelabels.getSelectedWhitelabel())
+                              .friendlyName,
+                          channel?.id ?? '');
+                      if (res == 'OK') {
+                        setState(() {
+                          subscribed = false;
+                        });
+                        if (mounted) {
+                          ref.read(rootProvider.notifier).loadsidebar();
+                        }
+                      }
+                    } else {
+                      await fpApiRequests.subscribe(
+                          (await whitelabels.getSelectedWhitelabel())
+                              .friendlyName,
+                          channel?.id ?? '');
+                      setState(() {
+                        subscribed = true;
+                      });
+                      if (mounted) {
+                        ref.read(rootProvider.notifier).loadsidebar();
+                      }
+                    }
+                  },
+                  style: subscribed
+                      ? FilledButton.styleFrom(
+                          backgroundColor: colorScheme.surfaceContainerHigh,
+                          foregroundColor: colorScheme.onSurface)
+                      : null,
+                  child: Text(subscribed ? 'Unsubscribe' : 'Subscribe'),
+                ),
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: SizedBox(

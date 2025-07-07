@@ -722,7 +722,6 @@ class FPApiRequests {
     );
 
     final resData = jsonDecode(response.data);
-    print(resData);
 
     if (response.statusCode == 200) {
       if (resData['needs2FA'] == true) {
@@ -771,6 +770,25 @@ class FPApiRequests {
   Future<String> logout(String whitelabel) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
     final url = '${whiteLabel.apiUrl}/v2/auth/logout';
+    final response = await _dio.post(
+      url,
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> subscribe(
+      String whitelabel, String creatorId) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v3/creator/subscribe?id=$creatorId';
+    final response = await _dio.post(
+      url,
+    );
+    return jsonDecode(response.data);
+  }
+
+  Future<String> unsubscribe(String whitelabel, String creatorId) async {
+    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+    final url = '${whiteLabel.apiUrl}/v3/creator/unsubscribe?id=$creatorId';
     final response = await _dio.post(
       url,
     );
