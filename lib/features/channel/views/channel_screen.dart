@@ -263,6 +263,10 @@ class ChannelScreenStateWrapperState
             setState(() {
               currentWhitelabel = whitelabel;
               rootchannel = creator;
+              subscribed = rootLayoutKey.currentState!.ref
+                  .watch(rootProvider)
+                  .creators
+                  .any((c) => c.id == rootchannel.id);
               channel = creator.channels?.firstWhere(
                 (channel) => channel.urlname == widget.subName,
               );
@@ -287,12 +291,12 @@ class ChannelScreenStateWrapperState
           final whitelabel = await whitelabels.getSelectedWhitelabel();
           setState(() {
             currentWhitelabel = whitelabel;
+            channel = creator;
+            rootchannel = creator;
             subscribed = rootLayoutKey.currentState!.ref
                 .watch(rootProvider)
                 .creators
-                .any((c) => c.id == creator.id);
-            channel = creator;
-            rootchannel = creator;
+                .any((c) => c.id == rootchannel.id);
             rootLayoutKey.currentState?.setAppBar(Text(channel.title));
 
             if (!statsFetched && rootchannel.id != null) {
@@ -334,7 +338,8 @@ class ChannelScreenStateWrapperState
                     decoration: BoxDecoration(
                       image: DecorationImage(
                         image: channel?.cover?.path != null &&
-                                channel?.cover?.path.isNotEmpty
+                                channel?.cover?.path.isNotEmpty &&
+                                channel?.cover?.path.contains('http') == true
                             ? CachedNetworkImageProvider(
                                 channel?.cover?.path!,
                               )
@@ -371,7 +376,9 @@ class ChannelScreenStateWrapperState
                           children: [
                             CircleAvatar(
                               backgroundImage: channel?.icon?.path != null &&
-                                      channel?.icon?.path.isNotEmpty
+                                      channel?.icon?.path.isNotEmpty &&
+                                      channel?.icon?.path.contains('http') ==
+                                          true
                                   ? CachedNetworkImageProvider(
                                       channel?.icon?.path!,
                                     )
@@ -424,9 +431,9 @@ class ChannelScreenStateWrapperState
                       ],
                     ),
                     const Spacer(),
-                    if (currentWhitelabel?.features
-                            .contains('freeSubscriptions') ??
-                        false)
+                    if (!smol &&
+                        currentWhitelabel!.features
+                            .contains('freeSubscriptions'))
                       FilledButton(
                         onPressed: () async {
                           if (subscribed) {
@@ -555,11 +562,15 @@ class ChannelScreenStateWrapperState
             rootLayoutKey.currentState!.isSmallScreen)
           const SizedBox(height: 12),
         if (rootchannel.channels!.length > 1 &&
-            rootLayoutKey.currentState!.isSmallScreen)
-          ChannelSelector(
-            creator: rootchannel,
-            channelId: channel.id,
-            isRootChannel: isRootChannel,
+                rootLayoutKey.currentState!.isSmallScreen ||
+            rootchannel.channels!.length > 1 && !subscribed)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: ChannelSelector(
+              creator: rootchannel,
+              channelId: channel.id,
+              isRootChannel: isRootChannel,
+            ),
           ),
       ],
     );
@@ -576,6 +587,7 @@ class ChannelScreenStateWrapperState
 
     double profileImageRadius = (screenWidth * 0.1).clamp(44.0, 52.0);
     double fontSize = (screenWidth * 0.06).clamp(4.0, 30.0);
+    final bool smol = screenWidth < 460;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -599,7 +611,8 @@ class ChannelScreenStateWrapperState
                     decoration: BoxDecoration(
                       image: DecorationImage(
                         image: channel?.cover?.path != null &&
-                                channel?.cover?.path.isNotEmpty
+                                channel?.cover?.path.isNotEmpty &&
+                                channel?.cover?.path.contains('http') == true
                             ? CachedNetworkImageProvider(
                                 channel?.cover?.path!,
                               )
@@ -636,7 +649,8 @@ class ChannelScreenStateWrapperState
                       CircleAvatar(
                         radius: profileImageRadius,
                         backgroundImage: channel?.icon?.path != null &&
-                                channel?.icon?.path.isNotEmpty
+                                channel?.icon?.path.isNotEmpty &&
+                                channel?.icon?.path.contains('http') == true
                             ? CachedNetworkImageProvider(
                                 channel?.icon?.path!,
                               )
@@ -685,8 +699,8 @@ class ChannelScreenStateWrapperState
                 ],
               ),
               const Spacer(),
-              if (currentWhitelabel?.features.contains('freeSubscriptions') ??
-                  false)
+              if (!smol &&
+                  currentWhitelabel!.features.contains('freeSubscriptions'))
                 FilledButton(
                   onPressed: () async {
                     if (subscribed) {
@@ -807,11 +821,15 @@ class ChannelScreenStateWrapperState
             rootLayoutKey.currentState!.isSmallScreen)
           const SizedBox(height: 12),
         if (rootchannel.channels!.length > 1 &&
-            rootLayoutKey.currentState!.isSmallScreen)
-          ChannelSelector(
-            creator: rootchannel,
-            channelId: channel.id,
-            isRootChannel: isRootChannel,
+                rootLayoutKey.currentState!.isSmallScreen ||
+            rootchannel.channels!.length > 1 && !subscribed)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: ChannelSelector(
+              creator: rootchannel,
+              channelId: channel.id,
+              isRootChannel: isRootChannel,
+            ),
           ),
       ],
     );
@@ -961,6 +979,8 @@ class ChannelScreenStateWrapperState
                                     stats: response,
                                     smol: smol,
                                     legacy: snapshot.data ?? false,
+                                    currentWhitelabel: currentWhitelabel,
+                                    subscribed: subscribed,
                                   );
                                 },
                               ),
@@ -1080,19 +1100,36 @@ class HomeContent extends StatelessWidget {
   }
 }
 
-class AboutContent extends StatelessWidget {
+class AboutContent extends ConsumerStatefulWidget {
   final dynamic channel;
   final dynamic rootchannel;
   final dynamic stats;
   final bool smol;
   final bool legacy;
+  final bool subscribed;
+  final WhiteLabel? currentWhitelabel;
   const AboutContent(
       {super.key,
       this.channel,
       this.rootchannel,
       this.stats,
       this.smol = false,
-      this.legacy = false});
+      this.legacy = false,
+      this.subscribed = false,
+      this.currentWhitelabel});
+
+  @override
+  ConsumerState<AboutContent> createState() => _AboutContentState();
+}
+
+class _AboutContentState extends ConsumerState<AboutContent> {
+  bool subscribed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    subscribed = widget.subscribed;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1108,7 +1145,7 @@ class AboutContent extends StatelessWidget {
           children: [
             MarkdownWidget(
               shrinkWrap: true,
-              data: channel.about ?? '',
+              data: widget.channel.about ?? '',
             ),
             const SizedBox(height: 12.0),
             const Divider(),
@@ -1129,7 +1166,7 @@ class AboutContent extends StatelessWidget {
                       spacing: 8.0,
                       runSpacing: 8.0,
                       children: [
-                        if (channel.socialLinks.discord != null)
+                        if (widget.channel.socialLinks.discord != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1143,8 +1180,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.discord!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.discord!));
                               },
                               child: Center(
                                 child: Icon(
@@ -1155,7 +1192,7 @@ class AboutContent extends StatelessWidget {
                               ),
                             ),
                           ),
-                        if (channel.socialLinks.twitter != null)
+                        if (widget.channel.socialLinks.twitter != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1169,8 +1206,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.twitter!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.twitter!));
                               },
                               child: Center(
                                 child: FaIcon(
@@ -1181,7 +1218,7 @@ class AboutContent extends StatelessWidget {
                               ),
                             ),
                           ),
-                        if (channel.socialLinks.youtube != null)
+                        if (widget.channel.socialLinks.youtube != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1194,8 +1231,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.youtube!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.youtube!));
                               },
                               child: Center(
                                 child: Icon(
@@ -1206,7 +1243,7 @@ class AboutContent extends StatelessWidget {
                               ),
                             ),
                           ),
-                        if (channel.socialLinks.facebook != null)
+                        if (widget.channel.socialLinks.facebook != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1220,8 +1257,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.facebook!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.facebook!));
                               },
                               child: Center(
                                 child: Icon(
@@ -1232,7 +1269,7 @@ class AboutContent extends StatelessWidget {
                               ),
                             ),
                           ),
-                        if (channel.socialLinks.instagram != null)
+                        if (widget.channel.socialLinks.instagram != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1246,8 +1283,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.instagram!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.instagram!));
                               },
                               child: Center(
                                 child: Icon(
@@ -1258,7 +1295,7 @@ class AboutContent extends StatelessWidget {
                               ),
                             ),
                           ),
-                        if (channel.socialLinks.website != null)
+                        if (widget.channel.socialLinks.website != null)
                           SizedBox(
                             width: buttonSize,
                             height: buttonSize,
@@ -1272,8 +1309,8 @@ class AboutContent extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () {
-                                launchUrl(
-                                    Uri.parse(channel.socialLinks.website!));
+                                launchUrl(Uri.parse(
+                                    widget.channel.socialLinks.website!));
                               },
                               child: Center(
                                 child: FaIcon(
@@ -1302,7 +1339,7 @@ class AboutContent extends StatelessWidget {
                       alignment: WrapAlignment.center,
                       spacing: 8.0,
                       runSpacing: 8.0,
-                      children: rootchannel.discordServers
+                      children: widget.rootchannel.discordServers
                           .map<Widget>((discordServer) {
                         const iconSize = 24.0;
 
@@ -1346,19 +1383,19 @@ class AboutContent extends StatelessWidget {
                 ),
               ),
             ),
-            if (legacy &&
-                    (stats['subscribers'] != null ||
-                        legacy && stats['totalIncome'] != null) ||
-                smol &&
-                    (stats['subscribers'] != null ||
-                        smol && stats['totalIncome'] != null))
+            if (widget.legacy &&
+                    (widget.stats['subscribers'] != null ||
+                        widget.legacy && widget.stats['totalIncome'] != null) ||
+                widget.smol &&
+                    (widget.stats['subscribers'] != null ||
+                        widget.smol && widget.stats['totalIncome'] != null))
               const SizedBox(height: 16.0),
-            if (legacy &&
-                    (stats['subscribers'] != null ||
-                        legacy && stats['totalIncome'] != null) ||
-                smol &&
-                    (stats['subscribers'] != null ||
-                        smol && stats['totalIncome'] != null))
+            if (widget.legacy &&
+                    (widget.stats['subscribers'] != null ||
+                        widget.legacy && widget.stats['totalIncome'] != null) ||
+                widget.smol &&
+                    (widget.stats['subscribers'] != null ||
+                        widget.smol && widget.stats['totalIncome'] != null))
               Center(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -1378,19 +1415,20 @@ class AboutContent extends StatelessWidget {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          if (stats['subscribers'] != null)
+                          if (widget.stats['subscribers'] != null)
                             Expanded(
                               child: StatColumn(
-                                value: stats['subscribers'].toString(),
+                                value: widget.stats['subscribers'].toString(),
                                 label: 'Subscribers',
                               ),
                             ),
-                          if (stats['totalIncome'] != null)
+                          if (widget.stats['totalIncome'] != null)
                             const SizedBox(width: 16.0),
-                          if (stats['totalIncome'] != null)
+                          if (widget.stats['totalIncome'] != null)
                             Expanded(
                               child: StatColumn(
-                                value: '\$${stats['totalIncome'].toString()}',
+                                value:
+                                    '\$${widget.stats['totalIncome'].toString()}',
                                 label: 'Per Month',
                               ),
                             ),
@@ -1400,6 +1438,51 @@ class AboutContent extends StatelessWidget {
                   },
                 ),
               ),
+            Center(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 15),
+                child: widget.smol &&
+                        widget.currentWhitelabel!.features
+                            .contains('freeSubscriptions')
+                    ? FilledButton(
+                        onPressed: () async {
+                          if (subscribed) {
+                            final res = await fpApiRequests.unsubscribe(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                widget.channel.id ?? '');
+                            if (res == 'OK') {
+                              setState(() {
+                                subscribed = false;
+                              });
+                              if (mounted) {
+                                ref.read(rootProvider.notifier).loadsidebar();
+                              }
+                            }
+                          } else {
+                            await fpApiRequests.subscribe(
+                                (await whitelabels.getSelectedWhitelabel())
+                                    .friendlyName,
+                                widget.channel.id ?? '');
+                            setState(() {
+                              subscribed = true;
+                            });
+                            if (mounted) {
+                              ref.read(rootProvider.notifier).loadsidebar();
+                            }
+                          }
+                        },
+                        style: subscribed
+                            ? FilledButton.styleFrom(
+                                backgroundColor:
+                                    colorScheme.surfaceContainerHigh,
+                                foregroundColor: colorScheme.onSurface)
+                            : null,
+                        child: Text(subscribed ? 'Unsubscribe' : 'Subscribe'),
+                      )
+                    : null,
+              ),
+            ),
           ],
         ),
       ),
@@ -1550,7 +1633,8 @@ class _ChannelSelectorState extends State<ChannelSelector> {
                           CircleAvatar(
                             radius: 9,
                             foregroundImage: button.image != null &&
-                                    (button.image ?? '').isNotEmpty
+                                    (button.image ?? '').isNotEmpty &&
+                                    button.image!.contains('http')
                                 ? CachedNetworkImageProvider(button.image!)
                                 : AssetImage('assets/placeholder.png'),
                           ),

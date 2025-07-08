@@ -1,10 +1,12 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:floaty/features/api/repositories/fpapi.dart';
 
 import 'dart:async';
 import 'package:floaty/features/router/views/root_layout.dart';
 import 'package:floaty/shared/views/error_screen.dart';
+import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -592,7 +594,7 @@ Widget chatterList(Map<String, dynamic> chatterdata) {
   );
 }
 
-class PollWidget extends StatefulWidget {
+class PollWidget extends ConsumerStatefulWidget {
   final WidgetRef ref;
   final PollWrapper poll;
 
@@ -603,15 +605,17 @@ class PollWidget extends StatefulWidget {
   });
 
   @override
-  State<PollWidget> createState() => _PollWidgetState();
+  ConsumerState<PollWidget> createState() => _PollWidgetState();
 }
 
-class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
+class _PollWidgetState extends ConsumerState<PollWidget>
+    with WidgetsBindingObserver {
   int? selectedOptionIndex;
   bool hasVoted = false;
   Timer? _timer;
   Duration timeRemaining = Duration.zero;
   bool showResults = false;
+  DateTime? ttd;
 
   @override
   void initState() {
@@ -619,6 +623,8 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _startTimer();
     _init();
+    hasVoted = widget.poll.poll.voted ?? false;
+    selectedOptionIndex = widget.poll.poll.voteInfo?.entries.first.value ?? 0;
   }
 
   void _init() {
@@ -647,17 +653,68 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
     });
   }
 
+  void _startEndTimer() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pollprovider.notifier).setttd(widget.poll.poll.id!);
+    });
+    _timer?.cancel();
+    ttd = DateTime.now().add(const Duration(seconds: 30));
+    _timer = Timer(const Duration(seconds: 30), () {
+      if (!hasVoted) {
+        setState(() {
+          selectedOptionIndex = null;
+          hasVoted = true;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          timeRemaining = ttd!.difference(DateTime.now());
+        });
+        if (timeRemaining.inSeconds <= 0) {
+          setState(() {
+            timeRemaining = Duration.zero;
+          });
+          _timer?.cancel();
+          widget.ref
+              .watch(pollprovider.notifier)
+              .removePoll(widget.poll.poll.id!);
+        }
+      }
+    });
+  }
+
   void _updateTimeRemaining() {
+    if (widget.poll.isOpen == false) {
+      if (!hasVoted) {
+        setState(() {
+          selectedOptionIndex = null;
+          hasVoted = true;
+        });
+      }
+      _timer?.cancel();
+      _startEndTimer();
+      return;
+    }
     if (widget.poll.poll.endDate == null) {
       timeRemaining = Duration.zero;
       return;
     }
     final now = DateTime.now();
     if (now.isAfter(widget.poll.poll.endDate!)) {
-      timeRemaining = Duration.zero;
+      setState(() {
+        timeRemaining = Duration.zero;
+      });
       _timer?.cancel();
+      widget.poll.isOpen = false;
+      if (!hasVoted) {
+        selectedOptionIndex = null;
+        hasVoted = true;
+      }
+      _startEndTimer();
     } else {
-      timeRemaining = widget.poll.poll.endDate!.difference(now);
+      setState(() {
+        timeRemaining = widget.poll.poll.endDate!.difference(now);
+      });
     }
   }
 
@@ -678,8 +735,6 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    hasVoted = widget.poll.poll.voted ?? false;
-
     return Container(
       margin: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -702,7 +757,7 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
               ),
             ),
             child: Text(
-              widget.poll.poll.title,
+              widget.poll.poll.title ?? 'Untitled Poll',
               style: textTheme.titleSmall?.copyWith(
                 color: colorScheme.onSurface,
                 fontWeight: FontWeight.w500,
@@ -719,9 +774,7 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
                 double percentage =
                     getPercentage(widget.poll.poll.runningTally.counts[index]);
                 int voteCount = widget.poll.poll.runningTally.counts[index];
-                bool isSelected = hasVoted
-                    ? widget.poll.poll.voteInfo?.entries.first.value == index
-                    : selectedOptionIndex == index;
+                bool isSelected = selectedOptionIndex == index;
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2.5),
@@ -855,9 +908,11 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.poll.poll.endDate != null
-                      ? _formatDuration(timeRemaining)
-                      : 'No end time',
+                  widget.poll.isOpen
+                      ? widget.poll.poll.endDate != null
+                          ? _formatDuration(timeRemaining)
+                          : 'No end time'
+                      : 'Ended',
                   style: textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -887,18 +942,16 @@ class _PollWidgetState extends State<PollWidget> with WidgetsBindingObserver {
     );
   }
 
-  void _vote(int index) {
+  Future<void> _vote(int index) async {
     if (hasVoted) return;
-
+    fpApiRequests.submitVote(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+        widget.poll.poll.id ?? 'unknown',
+        index);
     setState(() {
       selectedOptionIndex = index;
       hasVoted = true;
     });
-
-    widget.ref
-        .read(webSocketEventHandlerProvider)
-        .submitVote(widget.poll.poll.id, index);
-    print('Submitted vote for poll ${widget.poll.poll.id} with option $index');
   }
 
   int get totalVotes {

@@ -17,7 +17,7 @@ class Whitelabels {
       cookieName: "sails.sid",
       format: "hls.mpegts",
       sort: 0,
-      features: ['live', 'chat'],
+      features: ['live'],
     ),
     WhiteLabel(
       name: 'Sauce+',
@@ -117,12 +117,15 @@ class Whitelabels {
     if (labels.isEmpty) {
       return whitelabelsList.reduce((a, b) => a.sort < b.sort ? a : b);
     }
-    
+
     // Get all logged-in whitelabels
-    final loggedInWhitelabels = whitelabelsList.where(
-      (whitelabel) => labels.any((label) => label.startsWith(whitelabel.friendlyName)),
-    ).toList();
-    
+    final loggedInWhitelabels = whitelabelsList
+        .where(
+          (whitelabel) =>
+              labels.any((label) => label.startsWith(whitelabel.friendlyName)),
+        )
+        .toList();
+
     // Return the one with the lowest sort index
     return loggedInWhitelabels.reduce((a, b) => a.sort < b.sort ? a : b);
   }

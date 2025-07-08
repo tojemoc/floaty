@@ -15,10 +15,10 @@ enum PollEventType {
 @JsonSerializable()
 class Poll {
   @JsonKey(name: 'id')
-  final String id;
-  final String type;
-  final String creator;
-  final String title;
+  final String? id;
+  final String? type;
+  final String? creator;
+  final String? title;
   final List<String> options;
   @JsonKey(name: 'startDate')
   final DateTime startDate;
@@ -34,10 +34,10 @@ class Poll {
   final Map<String, dynamic>? voteInfo;
 
   Poll({
-    required this.id,
-    required this.type,
-    required this.creator,
-    required this.title,
+    this.id,
+    this.type,
+    this.creator,
+    this.title,
     required this.options,
     required this.startDate,
     this.endDate,
@@ -48,7 +48,46 @@ class Poll {
     this.voteInfo,
   });
 
-  factory Poll.fromJson(Map<String, dynamic> json) => _$PollFromJson(json);
+  factory Poll.fromJson(Map<String, dynamic> json) {
+    try {
+      // Handle case where poll data is nested under 'poll' key
+      final pollData = json['poll'] ?? json;
+
+      return Poll(
+        id: (pollData['id'] as String?) ?? 'unknown',
+        type: (pollData['type'] as String?) ?? 'unknown',
+        creator: (pollData['creator'] as String?) ?? 'unknown',
+        title: (pollData['title'] as String?) ?? 'Untitled Poll',
+        options: (pollData['options'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        startDate: pollData['startDate'] != null
+            ? DateTime.tryParse(pollData['startDate'].toString()) ??
+                DateTime.now()
+            : DateTime.now(),
+        endDate: pollData['endDate'] != null
+            ? DateTime.tryParse(pollData['endDate'].toString())
+            : null,
+        runningTally: pollData['runningTally'] != null
+            ? RunningTally.fromJson(
+                Map<String, dynamic>.from(pollData['runningTally']))
+            : RunningTally(tick: 0, counts: []),
+        finalTallyApproximate: pollData['finalTallyApproximate'] != null
+            ? List<int>.from(pollData['finalTallyApproximate'] as List)
+            : null,
+        finalTallyReal: pollData['finalTallyReal'] != null
+            ? List<int>.from(pollData['finalTallyReal'] as List)
+            : null,
+        voted: pollData['voted'] as bool?,
+        voteInfo: pollData['voteInfo'] != null
+            ? Map<String, dynamic>.from(pollData['voteInfo'])
+            : null,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
   Map<String, dynamic> toJson() => _$PollToJson(this);
 }
 

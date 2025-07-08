@@ -15,6 +15,9 @@ class FPWebsockets {
   String userAgent;
   PackageInfo? packageInfo;
   Function(dynamic)? _radioChatterHandler;
+  Function(dynamic)? _pollOpenHandler;
+  Function(dynamic)? _pollCloseHandler;
+  Function(dynamic)? _pollUpdateTallyHandler;
 
   @override
   FPWebsockets({required this.token, required this.userAgent}) {
@@ -115,17 +118,44 @@ class FPWebsockets {
       String creatorId, Function(Map<String, dynamic>) messagesHandler) {
     joinPollRoom(creatorId, messagesHandler);
 
-    fpio.socket.on('pollOpen', (data) {
+    // Remove any existing handler first
+    if (_pollOpenHandler != null) {
+      fpio.socket.off('pollOpen', _pollOpenHandler!);
+    }
+
+    // Create and store the new handler
+    _pollOpenHandler = (data) {
       messagesHandler({'socket': 'poll', 'type': 'open', 'data': data});
-    });
+    };
 
-    fpio.socket.on('pollClose', (data) {
+    // Add the new handler
+    fpio.socket.on('pollOpen', _pollOpenHandler!);
+
+    // Remove any existing handler first
+    if (_pollCloseHandler != null) {
+      fpio.socket.off('pollClose', _pollCloseHandler!);
+    }
+
+    // Create and store the new handler
+    _pollCloseHandler = (data) {
       messagesHandler({'socket': 'poll', 'type': 'close', 'data': data});
-    });
+    };
 
-    fpio.socket.on('pollUpdateTally', (data) {
+    // Add the new handler
+    fpio.socket.on('pollClose', _pollCloseHandler!);
+
+    // Remove any existing handler first
+    if (_pollUpdateTallyHandler != null) {
+      fpio.socket.off('pollUpdateTally', _pollUpdateTallyHandler!);
+    }
+
+    // Create and store the new handler
+    _pollUpdateTallyHandler = (data) {
       messagesHandler({'socket': 'poll', 'type': 'updateTally', 'data': data});
-    });
+    };
+
+    // Add the new handler
+    fpio.socket.on('pollUpdateTally', _pollUpdateTallyHandler!);
   }
 
   void pollDisconnect(

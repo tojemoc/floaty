@@ -643,11 +643,15 @@ class FPApiRequests {
     }
   }
 
-  Future<void> submitVote(String whitelabel, String id, int vote) async {
-    print('Submitting vote for poll $id with option $vote');
-    final response = await postData(
-        'v3/poll/votePoll?pollId=$id&optionIndex=$vote', whitelabel);
+  Future<int> submitVote(String whitelabel, String id, int vote) async {
+    final response =
+        await postData('v3/poll/vote?pollId=$id&optionIndex=$vote', whitelabel);
     LogService.logInfo('✅ Submitted Vote! response: $response');
+    if (response == 'OK') {
+      return 200;
+    } else {
+      return 500;
+    }
   }
 
   //because of the dumb way i handle progress (i have 3 different things that can call progress) we debounce this to avoid spam and stale data.

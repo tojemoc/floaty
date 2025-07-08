@@ -280,12 +280,17 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            fit: BoxFit.contain,
-            realCreatorInfo?.liveStream?.offline?.thumbnail?.path ??
-                realCreatorInfo?.liveStream?.thumbnail?.path ??
-                '',
-          ),
+          if (realCreatorInfo?.liveStream?.offline?.thumbnail?.path != null &&
+              realCreatorInfo
+                  ?.liveStream?.offline?.thumbnail?.path.isNotEmpty &&
+              realCreatorInfo?.liveStream?.offline?.thumbnail?.path
+                  .contains('http'))
+            Image.network(
+              fit: BoxFit.contain,
+              realCreatorInfo?.liveStream?.offline?.thumbnail?.path ??
+                  realCreatorInfo?.liveStream?.thumbnail?.path ??
+                  '',
+            ),
           Align(
             alignment: Alignment.center,
             child: ClipRRect(
@@ -433,7 +438,9 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
                             backgroundImage:
                                 realCreatorInfo?.icon?.path != null &&
                                         (realCreatorInfo?.icon?.path ?? '')
-                                            .isNotEmpty
+                                            .isNotEmpty &&
+                                        realCreatorInfo!.icon!.path!
+                                            .contains('http')
                                     ? CachedNetworkImageProvider(
                                         realCreatorInfo?.icon?.path ?? '')
                                     : AssetImage('assets/placeholder.png'),

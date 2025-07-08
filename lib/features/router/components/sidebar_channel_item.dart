@@ -128,7 +128,8 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: widget.response.icon?.path?.isNotEmpty == true
+              child: widget.response.icon?.path?.isNotEmpty == true &&
+                      widget.response.icon?.path?.contains('http') == true
                   ? CachedNetworkImage(
                       width: 24,
                       height: 24,
@@ -198,7 +199,8 @@ class _SidebarChannelItemState extends ConsumerState<SidebarChannelItem>
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: subChannel.icon?.path?.isNotEmpty == true
+                        child: subChannel.icon?.path?.isNotEmpty == true &&
+                                subChannel.icon?.path?.contains('http') == true
                             ? CachedNetworkImage(
                                 width: 20,
                                 height: 20,

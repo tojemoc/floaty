@@ -3,8 +3,6 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:floaty/features/api/repositories/fpapi.dart';
-import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpwebsockets.dart';
 import 'package:flutter/material.dart';
@@ -374,9 +372,10 @@ class ChatterListManager extends StateNotifier<Map<String, dynamic>> {
 
 class PollWrapper {
   final Poll poll;
-  final bool isOpen;
+  bool isOpen;
+  DateTime? ttd;
 
-  PollWrapper({required this.poll, required this.isOpen});
+  PollWrapper({required this.poll, required this.isOpen, this.ttd});
 }
 
 final pollprovider =
@@ -385,38 +384,56 @@ final pollprovider =
 });
 
 class PollManager extends StateNotifier<List<PollWrapper>> {
-  PollManager(this.ref) : super([]);
   final dynamic ref;
 
+  PollManager(this.ref) : super([]) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      for (var poll in state) {
+        if (poll.ttd != null && poll.ttd!.isBefore(DateTime.now())) {
+          removePoll(poll.poll.id!);
+        }
+      }
+    });
+  }
+
   void openPoll(Poll poll) {
-    print('Opening poll ${poll.id}');
     state = [
       ...state,
       PollWrapper(poll: poll, isOpen: true),
     ];
   }
 
+  void setttd(String pollId) {
+    state = state.map((p) {
+      if (p.poll.id == pollId) {
+        return PollWrapper(
+          isOpen: p.isOpen,
+          poll: p.poll,
+          ttd: DateTime.now().add(const Duration(seconds: 30)),
+        );
+      }
+      return p;
+    }).toList();
+  }
+
   void closePoll(Poll poll) async {
-    print('Closing poll ${poll.id}');
     state = state.map((p) {
       if (p.poll.id == poll.id) {
         return PollWrapper(
           isOpen: false,
           poll: p.poll,
+          ttd: DateTime.now().add(const Duration(seconds: 30)),
         );
       }
       return p;
     }).toList();
+  }
 
-    Timer(const Duration(seconds: 30), () {
-      if (mounted) {
-        state = state.where((p) => p.poll.id != poll.id).toList();
-      }
-    });
+  void removePoll(String pollId) {
+    state = state.where((p) => p.poll.id != pollId).toList();
   }
 
   void updateTally(TallyUpdate update) {
-    print('Updating tally for poll ${update.pollId}');
     state = state.map((p) {
       if (p.poll.id == update.pollId) {
         final updatedTally = RunningTally(
@@ -501,13 +518,6 @@ class WebSocketEventHandler {
   final Ref ref;
   WebSocketEventHandler(this.ref);
   TextEditingController? controller;
-
-  void submitVote(String pollId, int optionIndex) async {
-    fpApiRequests.submitVote(
-        (await whitelabels.getSelectedWhitelabel()).friendlyName,
-        pollId,
-        optionIndex);
-  }
 
   void sendMessage(String username, String message, String id,
       {bool isModerator = false, bool isCreator = true}) {
