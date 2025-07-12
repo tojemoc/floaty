@@ -646,7 +646,6 @@ class FPApiRequests {
   Future<int> submitVote(String whitelabel, String id, int vote) async {
     final response =
         await postData('v3/poll/vote?pollId=$id&optionIndex=$vote', whitelabel);
-    LogService.logInfo('✅ Submitted Vote! response: $response');
     if (response == 'OK') {
       return 200;
     } else {

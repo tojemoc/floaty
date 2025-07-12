@@ -300,6 +300,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                                   _buildSpecialStreamCard(),
                                 const SizedBox(height: 12.0),
                                 if (pjsonData['floatplane'] != null &&
+                                    pjsonData['floatplane']['isLive'] != null &&
                                     !pjsonData['floatplane']['isLive'] &&
                                     pjsonData['floatplane']['isWAN'] != null &&
                                     pjsonData['floatplane']['isWAN'] &&
@@ -656,11 +657,12 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
           platform: "Twitch",
           status: pjsonData['twitch']['isLive'] != null &&
                   pjsonData['twitch']['isLive']
-              ? pjsonData['twitch']['isWAN']
+              ? pjsonData['twitch']['isWAN'] != null &&
+                      pjsonData['twitch']['isWAN']
                   ? '(live)'
                   : '(live non-WAN)'
               : '(offline)',
-          isLive: pjsonData['twitch']['isLive'],
+          isLive: pjsonData['twitch']['isLive'] ?? false,
         ),
         _buildPlatformStatus(
           icon: SimpleIcons.youtube,
@@ -671,7 +673,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                   ? '(live)'
                   : '(live non-WAN)'
               : '(offline)',
-          isLive: pjsonData['youtube']['isLive'],
+          isLive: pjsonData['youtube']['isLive'] ?? false,
         ),
         _buildPlatformStatus(
           icon: SimpleIcons.floatplane,

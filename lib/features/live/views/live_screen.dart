@@ -442,7 +442,7 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
                                         realCreatorInfo!.icon!.path!
                                             .contains('http')
                                     ? CachedNetworkImageProvider(
-                                        realCreatorInfo?.icon?.path ?? '')
+                                        realCreatorInfo!.icon!.path!)
                                     : AssetImage('assets/placeholder.png'),
                             radius: 20,
                           ),

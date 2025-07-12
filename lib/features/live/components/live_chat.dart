@@ -624,7 +624,7 @@ class _PollWidgetState extends ConsumerState<PollWidget>
     _startTimer();
     _init();
     hasVoted = widget.poll.poll.voted ?? false;
-    selectedOptionIndex = widget.poll.poll.voteInfo?.entries.first.value ?? 0;
+    selectedOptionIndex = widget.poll.poll.voteInfo?.entries.first.value;
   }
 
   void _init() {

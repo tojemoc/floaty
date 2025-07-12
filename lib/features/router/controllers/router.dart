@@ -65,10 +65,7 @@ final GoRouter routerController = GoRouter(
     ),
     ShellRoute(
       builder: (context, state, child) {
-        return FocusTraversalGroup(
-          policy: ReadingOrderTraversalPolicy(),
-          child: RootLayout(key: rootLayoutKey, child: child),
-        );
+        return RootLayout(key: rootLayoutKey, child: child);
       },
       routes: [
         GoRoute(
