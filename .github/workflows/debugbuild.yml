@@ -14,76 +14,6 @@ env:
   DEPLOYMENT_API_KEY: ${{ secrets.DEPLOYMENT_API_KEY }}
 
 jobs:
-  LINUXANDROID:
-    name: Linux & Android
-    runs-on: ubuntu-22.04  # Changed from ubuntu-latest to ubuntu-22.04 for older glibc
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install jq for JSON parsing
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.29.3"
-          cache: true
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libmpv-dev
-
-      - name: Install dependencies for AppImage
-        run: |
-          sudo apt install -y locate
-          wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-          chmod +x appimagetool
-          sudo mv appimagetool /usr/local/bin/
-
-      - name: Prepare make_config.yaml
-        run: |
-          OS=linux
-          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
-            target_dir=$(dirname "$config_file")
-            cp "$config_file" "${target_dir}/make_config.yaml"
-            echo "Copied $config_file → ${target_dir}/make_config.yaml"
-          done
-
-      - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
-      - name: Build and release (with retry for deb packager bug)
-        run: |
-          # First attempt - may fail due to deb packager bug
-          echo "First build attempt..."
-          if ! fastforge release --name ${{ github.ref_name }}linux; then
-            echo "First build failed (expected due to deb packager bug), retrying..."
-            echo "Second build attempt..."
-            fastforge release --name ${{ github.ref_name }}linux
-          else
-            echo "First build succeeded!"
-          fi
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-linux-android
-          path: dist/
-
   MACOSIOS:
     name: MacOS & iOS
     runs-on: macos-latest
@@ -120,50 +50,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos-ios
-          path: dist/
-
-  WINDOWS:
-    name: Windows
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.29.1"
-          cache: true
-
-        
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Prepare make_config.yaml
-        shell: bash  #i hate powershell it can burn in hell
-        run: |
-          OS=windows
-          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
-            target_dir=$(dirname "$config_file")
-            cp "$config_file" "${target_dir}/make_config.yaml"
-            echo "Copied $config_file → ${target_dir}/make_config.yaml"
-          done
-
-      - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
-      - name: Build and release
-        run: fastforge release --name ${{ github.ref_name }}windows
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-windows
-          path: dist/
-
+          path: build/
   DEPLOY:
     name: Deploy Release
-    needs: [LINUXANDROID, WINDOWS, MACOSIOS]
+    needs: [MACOSIOS]
     runs-on: ubuntu-latest
     if: always() && (needs.LINUXANDROID.result == 'success' || needs.WINDOWS.result == 'success' || needs.MACOSIOS.result == 'success')
     steps:
