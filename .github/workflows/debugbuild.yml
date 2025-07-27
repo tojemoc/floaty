@@ -113,7 +113,8 @@ jobs:
         run: dart pub global activate fastforge
         
       - name: Build and release
-        run: flutter build ios
+        run: flutter build ios --release --no-codesign
+
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
