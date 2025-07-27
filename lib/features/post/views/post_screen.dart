@@ -829,6 +829,30 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
                           try {
                             await FileDownloader().enqueue(task);
+                            FileDownloader().updates.listen((update) async {
+                            switch (update) {
+                              case TaskStatusUpdate():
+                                // process the TaskStatusUpdate, e.g.
+                                switch (update.status) {
+                                  case TaskStatus.complete: {
+                                    print('Task ${update.task.taskId} success!');
+                                    await DownloadManager().moveToDownloads(task);
+                                  }
+                                  case TaskStatus.canceled:
+                                    print('Download was canceled');
+
+                                  case TaskStatus.paused:
+                                    print('Download was paused');
+
+                                  default:
+                                    print('Download not successful');
+                                }
+
+                              case TaskProgressUpdate():
+                                // process the TaskProgressUpdate, e.g.
+                                print(update);
+                            }
+                          });
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -837,7 +861,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               );
                             }
                             // Move file to downloads after completion
-                            await DownloadManager().moveToDownloads(task);
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

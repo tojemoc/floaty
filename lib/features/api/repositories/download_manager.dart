@@ -1,6 +1,5 @@
 import 'package:background_downloader/background_downloader.dart';
 import 'dart:io' show Platform;
-import 'dart:async' show Completer, StreamSubscription;
 
 class DownloadManager {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -110,97 +109,87 @@ class DownloadManager {
   }
 
   Future<void> moveToDownloads(DownloadTask task) async {
-    final extension = task.filename.split('.').last.toLowerCase();
-    SharedStorage targetStorage;
+    try {
+      final extension = task.filename.split('.').last.toLowerCase();
+      print(extension);
 
-    // Determine target storage based on file extension
-    switch (extension) {
-      case 'png':
-        targetStorage = SharedStorage.images;
-        break;
-      case 'mp4':
-        targetStorage = SharedStorage.video;
-        break;
-      case 'mp3':
-        targetStorage = SharedStorage.audio;
-        break;
-      default:
+      SharedStorage targetStorage;
+
+      // Determine target storage based on file extension
+      switch (extension) {
+        case 'png':
+          targetStorage = SharedStorage.images;
+          break;
+        case 'mp4':
+          targetStorage = SharedStorage.video;
+          break;
+        case 'mp3':
+          targetStorage = SharedStorage.audio;
+          break;
+        default:
+          targetStorage = SharedStorage.downloads;
+      }
+      if (!Platform.isAndroid && !Platform.isIOS) {
         targetStorage = SharedStorage.downloads;
-    }
+      }
+      print(targetStorage);
+      
 
-    final completer = Completer<void>();
-    late StreamSubscription subscription;
+      // Try to move the file multiple times if needed
+      int attempts = 0;
+      const maxAttempts = 3;
+      bool success = false;
 
-    subscription = FileDownloader().updates.listen(
-      (taskUpdate) {
-        if (taskUpdate.task.taskId == task.taskId) {
-          if (taskUpdate is TaskStatusUpdate) {
-            if (taskUpdate.status == TaskStatus.complete) {
-              subscription.cancel();
-              completer.complete();
-            } else if (taskUpdate.status == TaskStatus.failed ||
-                taskUpdate.status == TaskStatus.canceled) {
-              subscription.cancel();
-              completer.completeError(
-                  'Download failed with status: ${taskUpdate.status}');
-            }
+      while (attempts < maxAttempts && !success) {
+        print(attempts);
+        try {
+          final newFilePath = await FileDownloader().moveToSharedStorage(
+            task,
+            targetStorage,
+          );
+          print(newFilePath);
+
+          if (newFilePath != null) {
+            print('success');
+            _movedFilePaths[task.taskId] = newFilePath;
+            success = true;
+            break;
+          }
+
+          await Future.delayed(Duration(seconds: attempts + 1));
+          attempts++;
+        } catch (e) {
+          await Future.delayed(Duration(seconds: attempts + 1));
+          attempts++;
+        }
+      }
+
+      if (!success) {
+        // As a fallback, try to move to downloads
+        if (targetStorage != SharedStorage.downloads) {
+          print('fallback');
+          final newFilePath = await FileDownloader().moveToSharedStorage(
+            task,
+            SharedStorage.downloads,
+          );
+          print(newFilePath);
+          if (newFilePath != null) {
+            _movedFilePaths[task.taskId] = newFilePath;
+            print('fallback failed');
           }
         }
-      },
-      onError: (error) {
-        subscription.cancel();
-        completer.completeError('Error monitoring download: $error');
-      },
-    );
-
-    await completer.future;
-
-    // Try to move the file multiple times if needed
-    int attempts = 0;
-    const maxAttempts = 3;
-    bool success = false;
-
-    while (attempts < maxAttempts && !success) {
-      try {
-        final newFilePath = await FileDownloader().moveToSharedStorage(
-          task,
-          targetStorage,
-        );
-
-        if (newFilePath != null) {
-          _movedFilePaths[task.taskId] = newFilePath;
-          success = true;
-          break;
-        }
-
-        await Future.delayed(Duration(seconds: attempts + 1));
-        attempts++;
-      } catch (e) {
-        await Future.delayed(Duration(seconds: attempts + 1));
-        attempts++;
       }
-    }
 
-    if (!success) {
-      // As a fallback, try to move to downloads
-      if (targetStorage != SharedStorage.downloads) {
-        final newFilePath = await FileDownloader().moveToSharedStorage(
-          task,
-          SharedStorage.downloads,
-        );
-        if (newFilePath != null) {
-          _movedFilePaths[task.taskId] = newFilePath;
+      // Clean up old mappings periodically (keep only last 100 entries)
+      if (_movedFilePaths.length > 100) {
+        final entriesToRemove = _movedFilePaths.length - 100;
+        final keys = _movedFilePaths.keys.take(entriesToRemove).toList();
+        for (final key in keys) {
+          _movedFilePaths.remove(key);
         }
       }
-    }
-
-    // Clean up old mappings periodically (keep only last 100 entries)
-    if (_movedFilePaths.length > 100) {
-      final entriesToRemove = _movedFilePaths.length - 100;
-      final keys = _movedFilePaths.keys.take(entriesToRemove).toList();
-      for (final key in keys) {
-        _movedFilePaths.remove(key);
-      }
+    } catch (e) {
+      print(e);
     }
   }
 }
