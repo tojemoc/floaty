@@ -61,9 +61,9 @@ dependencies:
   logger: ^2.5.0
 
   #login
-  cloudflare_turnstile:
-    git:
-      url: https://github.com/floatyfp/cloudflare_turnstile
+  #cloudflare_turnstile:
+  #  git:
+  #    url: https://github.com/floatyfp/cloudflare_turnstile
 
   #profile page
   timelines_plus: ^1.0.6
@@ -102,7 +102,6 @@ dependencies:
   sails_io: ^0.0.2 
   socket_io_client: ^1.0.1
   web_socket_client: ^0.2.0
-  audioplayers: ^6.4.0
 
   # Deep linking
   app_links: ^6.3.0

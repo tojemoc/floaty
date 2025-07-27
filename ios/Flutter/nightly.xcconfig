@@ -1,3 +1,0 @@
-#include "Generated.xcconfig"
-PRODUCT_BUNDLE_IDENTIFIER=uk.bw86.floaty.nightly
-APP_NAME=Floaty Nightly

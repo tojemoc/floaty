@@ -28,21 +28,10 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>floaty</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>floaty</string>
-			</array>
-		</dict>
-	</array>
-	<!-- For Universal Links -->
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:yourdomain.com</string>
-	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
