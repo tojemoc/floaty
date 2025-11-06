@@ -3,7 +3,7 @@
 #### ⚠️Spaghetti code
 This repository is the tartar sauce spaghetti code of Floaty.
 
-### [Download Here](https://floaty.fyi/download)
+### [Download Here](https://floaty.fyi/download) 
 
 ## 📃Feature Matrix
 | **Feature**                | **Windows** | **MacOS** | **Linux** | **Android** | **iOS** | **Info**                  |
