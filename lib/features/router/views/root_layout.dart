@@ -128,13 +128,16 @@ class RootLayoutState extends ConsumerState<RootLayout>
                     const CircularProgressIndicator()
                   else
                     ...rootState.creators
-                        .map((creatorResponse) => SidebarChannelItem(
+                        .map((creatorResponse) {
+                          return SidebarChannelItem(
                               id: creatorResponse.id ?? '',
                               response: creatorResponse,
                               isSidebarCollapsed: isSidebarCollapsed,
                               isSmallScreen: isSmallScreen,
                               showText: rootState.showText,
-                            )),
+                            );
+                          },
+                        ),
                 ],
               ),
             ),

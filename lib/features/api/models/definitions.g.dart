@@ -1,7 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-// ignore_for_file: unused_element
-
 part of 'definitions.dart';
 
 // **************************************************************************
@@ -564,6 +562,8 @@ VideoAttachmentModel _$VideoAttachmentModelFromJson(
       isProcessing: json['isProcessing'] as bool,
       primaryBlogPost: json['primaryBlogPost'] as String,
       thumbnail: ImageModel.fromJson(json['thumbnail'] as Map<String, dynamic>),
+      timelineSprite:
+          ImageModel.fromJson(json['timelineSprite'] as Map<String, dynamic>),
       isAccessible: json['isAccessible'] as bool,
     );
 
@@ -584,6 +584,7 @@ Map<String, dynamic> _$VideoAttachmentModelToJson(
       'isProcessing': instance.isProcessing,
       'primaryBlogPost': instance.primaryBlogPost,
       'thumbnail': instance.thumbnail,
+      'timelineSprite': instance.timelineSprite,
       'isAccessible': instance.isAccessible,
     };
 
@@ -701,22 +702,6 @@ Map<String, dynamic> _$CreatorModelV2ToJson(CreatorModelV2 instance) =>
       'subscriberCountDisplay': instance.subscriberCountDisplay,
       'incomeDisplay': instance.incomeDisplay,
       'defaultChannel': instance.defaultChannel,
-    };
-
-UserInteractionModel _$UserInteractionModelFromJson(
-        Map<String, dynamic> json) =>
-    UserInteractionModel(
-      like: (json['like'] as num?)?.toInt(),
-      dislike: (json['dislike'] as num?)?.toInt(),
-      value: json['value'] as String?,
-    );
-
-Map<String, dynamic> _$UserInteractionModelToJson(
-        UserInteractionModel instance) =>
-    <String, dynamic>{
-      'like': instance.like,
-      'dislike': instance.dislike,
-      'value': instance.value,
     };
 
 UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(

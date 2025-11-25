@@ -9,10 +9,10 @@ part of 'ws_definitions.dart';
 // **************************************************************************
 
 Poll _$PollFromJson(Map<String, dynamic> json) => Poll(
-      id: json['id'] as String,
-      type: json['type'] as String,
-      creator: json['creator'] as String,
-      title: json['title'] as String,
+      id: json['id'] as String?,
+      type: json['type'] as String?,
+      creator: json['creator'] as String?,
+      title: json['title'] as String?,
       options:
           (json['options'] as List<dynamic>).map((e) => e as String).toList(),
       startDate: DateTime.parse(json['startDate'] as String),

@@ -35,12 +35,6 @@ final GoRouter routerController = GoRouter(
       },
     ),
     GoRoute(
-      path: '/2fa',
-      builder: (BuildContext context, GoRouterState state) {
-        return TwoFaScreen();
-      },
-    ),
-    GoRoute(
       path: '/update',
       builder: (BuildContext context, GoRouterState state) {
         return const UpdateScreen();
@@ -252,35 +246,19 @@ final GoRouter routerController = GoRouter(
   ],
   redirect: (BuildContext context, GoRouterState state) async {
     final isAuthenticated = await middleware.isAuthenticated();
-    final hasAccessTo2FA = await middleware.twoFAAuthenticated();
     final currentPath = state.uri.path;
 
     switch (currentPath) {
       case '/':
-        if (hasAccessTo2FA) return '/2fa';
         if (!isAuthenticated) return '/login';
-        if (isAuthenticated && !hasAccessTo2FA) return '/home';
+        if (isAuthenticated) return '/home';
         break;
 
       case '/login':
-        if (hasAccessTo2FA) return '/2fa';
-        if (!hasAccessTo2FA && isAuthenticated) return '/home';
-        return null;
-
-      case '/2fa':
-        if (hasAccessTo2FA) return null;
-        if (!hasAccessTo2FA && isAuthenticated) return '/home';
-        if (!hasAccessTo2FA && !isAuthenticated) return '/login';
-        return null;
-
-      case '/home':
-        if (hasAccessTo2FA) return '/2fa';
-        if (!isAuthenticated && !hasAccessTo2FA) return '/login';
-        if (isAuthenticated) return null;
+        if (isAuthenticated) return '/home';
         return null;
 
       default:
-        if (hasAccessTo2FA) return '/2fa';
         if (isAuthenticated) return null;
         return '/';
     }

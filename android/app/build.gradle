@@ -30,6 +30,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // OAuth2 redirect scheme for flutter_appauth
+        manifestPlaceholders = [
+            'appAuthRedirectScheme': 'uk.bw86.floaty',
+            'applicationName': 'android.app.Application'
+        ]
     }
 
     flavorDimensions "version"

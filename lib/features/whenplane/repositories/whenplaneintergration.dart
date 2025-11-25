@@ -77,8 +77,8 @@ class WhenPlaneIntegration {
     }
   }
 
-  getPreviousShowInfo(String date) {
-    return fetchData('history/show/$date');
+  Future<dynamic> getPreviousShowInfo(String date) async {
+    return await fetchData('history/show/$date');
   }
 
   String newPhrase() {

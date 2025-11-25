@@ -1,7 +1,7 @@
 import 'dart:io';
-
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:floaty/features/authentication/services/oauth2_service.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/main.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
@@ -22,12 +22,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:floaty/settings.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:floaty/features/authentication/views/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Widget child;
   const SettingsScreen({super.key, required this.child});
-
   @override
   SettingsScreenState createState() => SettingsScreenState();
 }
@@ -40,11 +38,9 @@ class SettingsScreenState extends State<SettingsScreen> {
       setapptitle();
     });
   }
-
   void setapptitle() {
     rootLayoutKey.currentState?.setAppBar(const Text('Settings'));
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,7 +52,7 @@ class SettingsScreenState extends State<SettingsScreen> {
             ),
             child: SettingsListScreen(),
           ),
-          const Divider(),
+          const VerticalDivider(),
           Expanded(child: widget.child),
         ],
       ),
@@ -66,7 +62,6 @@ class SettingsScreenState extends State<SettingsScreen> {
 
 class SettingsListScreen extends StatelessWidget {
   const SettingsListScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,8 +75,8 @@ class SettingsListScreen extends StatelessWidget {
                 GoRouterState.of(context).uri.path == '/settings/account' ||
                     MediaQuery.of(context).size.width >= 600 &&
                         GoRouterState.of(context).uri.path == '/settings',
-            leading: Icon(Icons.account_circle),
-            title: Text('Profile'),
+            leading: const Icon(Icons.account_circle),
+            title: const Text('Profile'),
             onTap: () {
               context.go('/settings/account');
             },
@@ -89,21 +84,21 @@ class SettingsListScreen extends StatelessWidget {
           ListTile(
             selected:
                 GoRouterState.of(context).uri.path == '/settings/invoices',
-            leading: Icon(Icons.receipt),
-            title: Text('Invoices'),
+            leading: const Icon(Icons.receipt),
+            title: const Text('Invoices'),
             onTap: () {
               context.go('/settings/invoices');
             },
           ),
-          Divider(),
-          ListTile(
+          const Divider(),
+          const ListTile(
               title: Text('Floaty Settings',
                   style: TextStyle(fontWeight: FontWeight.bold))),
           ListTile(
             selected:
                 GoRouterState.of(context).uri.path == '/settings/accounts',
-            leading: Icon(Icons.switch_account),
-            title: Text('Accounts'),
+            leading: const Icon(Icons.switch_account),
+            title: const Text('Accounts'),
             onTap: () {
               context.go('/settings/accounts');
             },
@@ -111,32 +106,32 @@ class SettingsListScreen extends StatelessWidget {
           ListTile(
             selected:
                 GoRouterState.of(context).uri.path == '/settings/appearance',
-            leading: Icon(Icons.brush),
-            title: Text('Appearance'),
+            leading: const Icon(Icons.brush),
+            title: const Text('Appearance'),
             onTap: () {
               context.go('/settings/appearance');
             },
           ),
           ListTile(
             selected: GoRouterState.of(context).uri.path == '/settings/player',
-            leading: Icon(Icons.play_arrow),
-            title: Text('Player'),
+            leading: const Icon(Icons.play_arrow),
+            title: const Text('Player'),
             onTap: () {
               context.go('/settings/player');
             },
           ),
           ListTile(
             selected: GoRouterState.of(context).uri.path == '/settings/updater',
-            leading: Icon(Icons.update),
-            title: Text('Updates'),
+            leading: const Icon(Icons.update),
+            title: const Text('Updates'),
             onTap: () {
               context.go('/settings/updater');
             },
           ),
           ListTile(
             selected: GoRouterState.of(context).uri.path == '/settings/about',
-            leading: Icon(Icons.info),
-            title: Text('About'),
+            leading: const Icon(Icons.info),
+            title: const Text('About'),
             onTap: () {
               context.go('/settings/about');
             },
@@ -148,8 +143,8 @@ class SettingsListScreen extends StatelessWidget {
                   return ListTile(
                     selected: GoRouterState.of(context).uri.path ==
                         '/settings/developer',
-                    leading: Icon(Icons.developer_mode),
-                    title: Text('Developer'),
+                    leading: const Icon(Icons.developer_mode),
+                    title: const Text('Developer'),
                     onTap: () {
                       context.go('/settings/developer');
                     },
@@ -157,9 +152,9 @@ class SettingsListScreen extends StatelessWidget {
                 }
                 return const SizedBox.shrink();
               }),
-          Divider(),
+          const Divider(),
           ListTile(
-            leading: Icon(Icons.logout, color: Colors.red),
+            leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text(
               'Log out',
               style: TextStyle(color: Colors.red),
@@ -175,34 +170,34 @@ class SettingsListScreen extends StatelessWidget {
                       builder: (context, setState) {
                         return AlertDialog(
                           title: const Text('Log out'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                  'Select which account(s) you want to log out of.'),
-                              ...loggedLabels.map((whitelabel) => RadioListTile(
-                                    value: whitelabel.split('-')[0],
-                                    groupValue: selectedWhitelabel,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        selectedWhitelabel = value.toString();
-                                      });
-                                    },
-                                    title: Text(whitelabels
-                                        .getWhitelabel(whitelabel.split('-')[0])
-                                        .name),
-                                  )),
-                              RadioListTile(
-                                value: 'all',
-                                groupValue: selectedWhitelabel,
-                                onChanged: (value) {
-                                  setState(() {
-                                    selectedWhitelabel = value.toString();
-                                  });
-                                },
-                                title: const Text('Log out of all accounts'),
-                              ),
-                            ],
+                          content: RadioGroup(
+                            groupValue: selectedWhitelabel,
+                            onChanged: (value) {
+                              setState(() {
+                                if (value != null) {
+                                  selectedWhitelabel = value.toString();
+                                }
+                              });
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                    'Select which account(s) you want to log out of.'),
+                                ...loggedLabels
+                                    .map((whitelabel) => RadioListTile(
+                                          value: whitelabel.split('-')[0],
+                                          title: Text(whitelabels
+                                              .getWhitelabel(
+                                                  whitelabel.split('-')[0])
+                                              .name),
+                                        )),
+                                const RadioListTile(
+                                  value: 'all',
+                                  title: Text('Log out of all accounts'),
+                                ),
+                              ],
+                            ),
                           ),
                           actions: [
                             TextButton(
@@ -312,7 +307,6 @@ class SettingsListScreen extends StatelessWidget {
     );
   }
 }
-
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
   @override
@@ -322,13 +316,11 @@ class AccountSettingsScreen extends StatefulWidget {
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   late final Map<String, dynamic>? user;
   bool isLoading = true;
-
   @override
   void initState() {
     super.initState();
     getdata();
   }
-
   void getdata() async {
     final userinfo = await fpApiRequests.getUserInfo(
       (await whitelabels.getSelectedWhitelabel()).friendlyName,
@@ -340,7 +332,6 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -362,10 +353,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           : null,
       body: Center(
         child: isLoading
-            ? CircularProgressIndicator()
+            ? const CircularProgressIndicator()
             : SingleChildScrollView(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
+                  constraints: const BoxConstraints(
                     maxWidth: 600,
                   ),
                   child: Column(
@@ -375,20 +366,21 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                       CircleAvatar(
                         radius: 50,
                         foregroundImage: CachedNetworkImageProvider(
-                          user?['selfUser']?['profileImage']?['path'] ?? '',
+                          user?['profileImage']?['path'] ?? '',
                         ),
-                        backgroundImage: AssetImage('assets/placeholder.png'),
+                        backgroundImage:
+                            const AssetImage('assets/placeholder.png'),
                       ),
-                      SizedBox(height: 20),
-                      AutoSizeText(user?['selfUser']?['username'] ?? 'Unknown',
-                          style: TextStyle(
+                      const SizedBox(height: 20),
+                      AutoSizeText(user?['username'] ?? 'Unknown',
+                          style: const TextStyle(
                               fontSize: 25, fontWeight: FontWeight.bold),
                           maxLines: 2,
                           textScaleFactor: 0.99,
                           minFontSize: 2),
-                      SizedBox(height: 2),
-                      AutoSizeText(user?['selfUser']?['email'] ?? 'Unknown',
-                          style: TextStyle(fontSize: 12),
+                      const SizedBox(height: 2),
+                      AutoSizeText(user?['email'] ?? 'Unknown',
+                          style: const TextStyle(fontSize: 12),
                           maxLines: 2,
                           textScaleFactor: 0.99,
                           minFontSize: 2),
@@ -410,23 +402,22 @@ class InvoicesSettingsScreen extends StatefulWidget {
 class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
   late final Map<String, dynamic>? invoices;
   bool isLoading = true;
-
   @override
   void initState() {
     super.initState();
     getdata();
   }
-
   void getdata() async {
     final invoices = await fpApiRequests.getInvoices(
       (await whitelabels.getSelectedWhitelabel()).friendlyName,
     );
-    setState(() {
-      isLoading = false;
-      this.invoices = invoices;
-    });
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+        this.invoices = invoices;
+      });
+    }
   }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -475,7 +466,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
                 ? const CircularProgressIndicator()
                 : SingleChildScrollView(
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: 600),
+                      constraints: const BoxConstraints(maxWidth: 600),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -515,7 +506,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
                                               ? Colors.green
                                               : Colors.red,
                                         ),
-                                        SizedBox(width: 10),
+                                        const SizedBox(width: 10),
                                         Expanded(
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
@@ -523,7 +514,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                'Invoice ${invoice['id']}     ${DateFormat('dd/MM/yyyy').format(DateTime.parse(invoice['date']))}',
+                                                'Invoice ${invoice['id']}      ${DateFormat('dd/MM/yyyy').format(DateTime.parse(invoice['date']))}',
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
@@ -532,7 +523,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
                                                         FontWeight.bold),
                                               ),
                                               Text(
-                                                'Amount: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountDue'])}        Subtotal: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountDue'])}        Taxes: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountTax'])}',
+                                                'Amount: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountDue'])}      Subtotal: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountDue'])}      Taxes: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(invoice['amountTax'])}',
                                                 style: TextStyle(
                                                     fontSize: subFontSize),
                                               ),
@@ -617,7 +608,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
                                                                                 1),
                                                                   ),
                                                                   Text(
-                                                                    'Amount: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountTotal'])}        Subtotal: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountSubtotal'])}        Taxes: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountTax'])}',
+                                                                    'Amount: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountTotal'])}      Subtotal: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountSubtotal'])}      Taxes: ${NumberFormat.currency(symbol: "\$", decimalDigits: 2).format(subscription['amountTax'])}',
                                                                     style: TextStyle(
                                                                         fontSize:
                                                                             subFontSize -
@@ -650,10 +641,8 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
     );
   }
 }
-
 class LicensesSettingsScreen extends StatelessWidget {
   const LicensesSettingsScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -675,7 +664,7 @@ class LicensesSettingsScreen extends StatelessWidget {
           : null,
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 600),
+          constraints: const BoxConstraints(maxWidth: 600),
           child: FutureBuilder<List<LicenseEntry>>(
             future: _getAllLicenses(),
             builder: (context, snapshot) {
@@ -708,7 +697,6 @@ class LicensesSettingsScreen extends StatelessWidget {
       ),
     );
   }
-
   Future<List<LicenseEntry>> _getAllLicenses() async {
     final List<LicenseEntry> all = [];
     await for (final entry in LicenseRegistry.licenses) {
@@ -732,12 +720,13 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
-      setState(() {
-        packageInfo = info;
-      });
+      if (mounted) {
+        setState(() {
+          packageInfo = info;
+        });
+      }
     });
   }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -762,7 +751,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: BoxConstraints(
+            constraints: const BoxConstraints(
               maxWidth: 600,
             ),
             child: Column(
@@ -773,13 +762,13 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                   onTap: () async {
                     final now = DateTime.now();
                     if (_lastTapTime == null ||
-                        now.difference(_lastTapTime!) > Duration(seconds: 2)) {
+                        now.difference(_lastTapTime!) >
+                            const Duration(seconds: 2)) {
                       _avatarTapCount = 1;
                     } else {
                       _avatarTapCount += 1;
                     }
                     _lastTapTime = now;
-
                     if (_avatarTapCount >= 3) {
                       final res = await settings.toggleBool('developerMode');
                       if (context.mounted) {
@@ -804,25 +793,25 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 AutoSizeText(
                     'Floaty ${flavor.isNotEmpty ? flavor[0].toUpperCase() + flavor.substring(1) : ''}',
-                    style: TextStyle(fontSize: 22),
+                    style: const TextStyle(fontSize: 22),
                     maxLines: 2,
                     textScaleFactor: 0.99,
                     minFontSize: 2),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
                   'v${packageInfo?.version ?? ''} (${packageInfo?.buildNumber ?? ''})',
-                  style: TextStyle(fontSize: 13),
+                  style: const TextStyle(fontSize: 13),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     TextButton(
-                      child: Padding(
+                      child: const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 6, vertical: 14),
                         child: Column(
@@ -844,7 +833,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                       },
                     ),
                     TextButton(
-                      child: Padding(
+                      child: const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 6, vertical: 14),
                         child: Column(
@@ -866,7 +855,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                       },
                     ),
                     TextButton(
-                      child: Padding(
+                      child: const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 6, vertical: 14),
                         child: Column(
@@ -884,37 +873,33 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                         ),
                       ),
                       onPressed: () {
-                        //TODO: actual invite
-                        launchUrl(
-                            Uri.parse('https://discord.com/invite/floaty'));
+                        launchUrl(Uri.parse('https://floaty.fyi/discord'));
                       },
                     ),
                   ],
                 ),
-                SizedBox(height: 25),
-                Column(
+                const SizedBox(height: 25),
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Team',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 7),
+                    SizedBox(height: 7),
                     CustomCard(
                       name: 'bw86',
                       role: 'Developer',
                       avatarUrl:
                           'https://avatars.githubusercontent.com/u/51877146?v=4',
-                      onTap: () {
-                        launchUrl(Uri.parse('https://github.com/bw8686'));
-                      },
+                      onTap: null,
                     ),
                   ],
                 ),
-                SizedBox(height: 15),
+                const SizedBox(height: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -946,7 +931,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 15),
+                const SizedBox(height: 15),
                 CustomCard(
                   name: 'Open source libraries',
                   onTap: () {
@@ -966,16 +951,14 @@ class CustomCard extends StatelessWidget {
   final String name;
   final String? role;
   final String? avatarUrl;
-  final VoidCallback onTap;
-
+  final VoidCallback? onTap;
   const CustomCard({
     super.key,
     required this.name,
     this.role,
     this.avatarUrl,
-    required this.onTap,
+    this.onTap,
   });
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1034,7 +1017,6 @@ class PlayerSettingsScreen extends StatefulWidget {
   const PlayerSettingsScreen({
     super.key,
   });
-
   @override
   State<PlayerSettingsScreen> createState() => _PlayerSettingsScreenState();
 }
@@ -1051,12 +1033,10 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
               toolbarHeight: 40,
               backgroundColor: colorScheme.surfaceContainer,
               surfaceTintColor: colorScheme.surfaceContainer,
-              title: Text('Player'),
+              title: const Text('Player'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  Navigator.of(context).maybePop();
-                },
+                onPressed: () => context.pop(),
               ),
             )
           : null,
@@ -1065,16 +1045,18 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
           constraints: const BoxConstraints(maxWidth: 600),
           child: ListView(
             children: [
-              ToggleSetting(
+              const ToggleSetting(
                 title: 'Pause upon entering background',
                 settingkey: 'pause_on_background',
               ),
-              if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS)
-                ToggleSetting(
+              if (!Platform.isAndroid && !Platform.isIOS)
+                const ToggleSetting(
                   title: 'Discord RPC',
                   settingkey: 'discord_rpc',
                   defaultvalue: true,
                 ),
+              if (Platform.isAndroid || Platform.isIOS)
+                const PlayerTypeSelector(),
             ],
           ),
         ),
@@ -1082,17 +1064,14 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
     );
   }
 }
-
 class AppearanceSettingsScreen extends StatefulWidget {
   const AppearanceSettingsScreen({
     super.key,
   });
-
   @override
   State<AppearanceSettingsScreen> createState() =>
       _AppearanceSettingsScreenState();
 }
-
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   @override
   Widget build(BuildContext context) {
@@ -1108,7 +1087,7 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
               title: const Text('Appearance'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: () => context.pop(),
               ),
             )
           : null,
@@ -1135,23 +1114,25 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                  RadioListTile<int>(
-                    title: const Text('Classic Light'),
-                    value: 0,
+                  RadioGroup(
                     groupValue: themeType,
                     onChanged: (v) => settingsBox.put('theme_type', v!),
-                  ),
-                  RadioListTile<int>(
-                    title: const Text('Classic Dark'),
-                    value: 1,
-                    groupValue: themeType,
-                    onChanged: (v) => settingsBox.put('theme_type', v!),
-                  ),
-                  RadioListTile<int>(
-                    title: const Text('Material You'),
-                    value: 2,
-                    groupValue: themeType,
-                    onChanged: (v) => settingsBox.put('theme_type', v!),
+                    child: Column(
+                      children: const [
+                        RadioListTile<int>(
+                          title: Text('Classic Light'),
+                          value: 0,
+                        ),
+                        RadioListTile<int>(
+                          title: Text('Classic Dark'),
+                          value: 1,
+                        ),
+                        RadioListTile<int>(
+                          title: Text('Material You'),
+                          value: 2,
+                        ),
+                      ],
+                    ),
                   ),
                   if (themeType == 2) ...[
                     const Padding(
@@ -1160,17 +1141,21 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
-                    RadioListTile<int>(
-                      title: const Text('Device Dynamic Color'),
-                      value: 0,
+                    RadioGroup(
                       groupValue: src,
                       onChanged: (v) => settingsBox.put('material_source', v!),
-                    ),
-                    RadioListTile<int>(
-                      title: const Text('Custom Color'),
-                      value: 1,
-                      groupValue: src,
-                      onChanged: (v) => settingsBox.put('material_source', v!),
+                      child: Column(
+                        children: const [
+                          RadioListTile<int>(
+                            title: Text('Device Dynamic Color'),
+                            value: 0,
+                          ),
+                          RadioListTile<int>(
+                            title: Text('Custom Color'),
+                            value: 1,
+                          ),
+                        ],
+                      ),
                     ),
                     if (src == 1)
                       ListTile(
@@ -1198,7 +1183,7 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                               actions: [
                                 TextButton(
                                     onPressed: () =>
-                                        Navigator.of(dialogContext).maybePop(),
+                                        Navigator.of(dialogContext).pop(),
                                     child: const Text('Cancel')),
                                 TextButton(
                                   onPressed: () {
@@ -1206,7 +1191,7 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                                       settingsBox.put('material_seed_color',
                                           picker.toARGB32());
                                     }
-                                    Navigator.of(dialogContext).maybePop();
+                                    Navigator.of(dialogContext).pop();
                                   },
                                   child: const Text('OK'),
                                 ),
@@ -1221,30 +1206,30 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
-                    RadioListTile<int>(
-                      title: const Text('Follow System'),
-                      value: 0,
+                    RadioGroup(
                       groupValue: dynamicMode,
                       onChanged: (v) {
                         settingsBox.put('material_dynamic_mode', v!);
                       },
-                    ),
-                    RadioListTile<int>(
-                      title: const Text('Force Light'),
-                      value: 1,
-                      groupValue: dynamicMode,
-                      onChanged: (v) =>
-                          settingsBox.put('material_dynamic_mode', v!),
-                    ),
-                    RadioListTile<int>(
-                      title: const Text('Force Dark'),
-                      value: 2,
-                      groupValue: dynamicMode,
-                      onChanged: (v) =>
-                          settingsBox.put('material_dynamic_mode', v!),
+                      child: Column(
+                        children: const [
+                          RadioListTile<int>(
+                            title: Text('Follow System'),
+                            value: 0,
+                          ),
+                          RadioListTile<int>(
+                            title: Text('Force Light'),
+                            value: 1,
+                          ),
+                          RadioListTile<int>(
+                            title: Text('Force Dark'),
+                            value: 2,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
-                  ToggleSetting(
+                  const ToggleSetting(
                     title: 'Old UI components from old Floatplane design.',
                     settingkey: 'legacy_ui',
                   ),
@@ -1257,40 +1242,31 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
     );
   }
 }
-
 class AccountsSettingsScreen extends StatefulWidget {
   const AccountsSettingsScreen({super.key});
   @override
   State<AccountsSettingsScreen> createState() => AccountsSettingsScreenState();
 }
-
 class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   late final List<WhiteLabelWithUser> loggedInLabels;
-  Map<String, bool> twoFARequired = {};
   bool isLoading = true;
-
   @override
   void initState() {
     super.initState();
     getdata();
   }
-
   void getdata() async {
     final loggedInLabels = await whitelabels.getLabelsAndUsers();
-    for (var label in loggedInLabels) {
-      twoFARequired[label.friendlyName] =
-          await settings.getBool('optional-${label.friendlyName}-2faRequired');
+    if (mounted) {
+      setState(() {
+        this.loggedInLabels = loggedInLabels;
+        isLoading = false;
+      });
     }
-    setState(() {
-      this.loggedInLabels = loggedInLabels;
-      isLoading = false;
-    });
   }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: MediaQuery.of(context).size.width < 600
           ? AppBar(
@@ -1301,7 +1277,7 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
               title: const Text('Accounts'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: () => context.pop(),
               ),
             )
           : null,
@@ -1325,190 +1301,231 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                             ),
                           ),
                           title: Text(whitelabel.name),
-                          subtitle: Text(twoFARequired[
-                                      whitelabel.friendlyName] ==
-                                  true
-                              ? '2FA Required'
-                              : whitelabel.loggedin
+                          subtitle: Text(whitelabel.loggedin
                                   ? 'Logged In (${whitelabel.user!.username})'
                                   : 'Not Logged In'),
-                          trailing: ElevatedButton(
-                            onPressed: () async {
-                              if (twoFARequired[whitelabel.friendlyName] ==
-                                  true) {
-                                if (context.mounted) {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: const Text('2FA'),
-                                      content: TwoFAFields(
-                                        twofaCodeController:
-                                            TextEditingController(),
-                                        whitelabel: whitelabel.whitelabel,
-                                        twofa: (String code,
-                                                WhiteLabel whitelabel,
-                                                BuildContext context,
-                                                Function twofacomplete) async =>
-                                            await LoginManager().twofa(
-                                                code,
-                                                whitelabel,
-                                                context,
-                                                twofacomplete,
-                                                optionalTwoFA: true),
-                                        twofacomplete: () {
-                                          if (context.mounted) {
-                                            context.pop();
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (!whitelabel.loggedin)
+                                IconButton(
+                                  icon: const Icon(Icons.cookie),
+                                  tooltip: 'Login with Cookie',
+                                  onPressed: () async {
+                                    final cookieController = TextEditingController();
+                                    final result = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: const Text('Cookie Login'),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Paste your sails.sid cookie value:',
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            TextField(
+                                              controller: cookieController,
+                                              decoration: const InputDecoration(
+                                                hintText: 's%3A...',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              maxLines: 3,
+                                            ),
+                                          ],
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(dialogContext).pop(false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () {
+                                              if (cookieController.text.isNotEmpty) {
+                                                Navigator.of(dialogContext).pop(true);
+                                              } else {
+                                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                                  const SnackBar(content: Text('Please enter a cookie value')),
+                                                );
+                                              }
+                                            },
+                                            child: const Text('Login'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
 
+                                    
+                                    if (result == true && cookieController.text.isNotEmpty) {
+                                      try {
+                                        final dir = await getApplicationSupportDirectory();
+                                        final cookieJar = PersistCookieJar(
+                                          storage: FileStorage('${dir.path}/.cookies/'),
+                                        );
+                                        
+                                        final cookie = Cookie('sails.sid', cookieController.text)
+                                          ..domain = whitelabel.whitelabel.domain
+                                          ..path = '/'
+                                          ..httpOnly = true
+                                          ..expires = DateTime.now().add(const Duration(days: 365));
+                                        
+                                        // Save to both with and without www to ensure it works
+                                        await cookieJar.saveFromResponse(
+                                          Uri.parse('https://www.${whitelabel.whitelabel.domain}'),
+                                          [cookie],
+                                        );
+                                        await cookieJar.saveFromResponse(
+                                          Uri.parse('https://${whitelabel.whitelabel.domain}'),
+                                          [cookie],
+                                        );
+                                        
+                                        
+                                        // Set auth method to cookie
+                                        final oauth2Service = OAuth2Service();
+                                        await oauth2Service.setAuthMethod('cookie', whitelabel: whitelabel.whitelabel.friendlyName);
+                                        
+                                        
+                                        // Try to get user info to verify
+                                        final userInfo = await fpApiRequests.getUserInfo(whitelabel.whitelabel.friendlyName);
+                                        
+
+                                          final userId = userInfo['id'] ?? 'cookie_user';
+                                          await whitelabels.addLoggedInLabel('${whitelabel.whitelabel.friendlyName}-$userId');
+                                          
+                                          if (context.mounted) {
                                             rootLayoutKey.currentState!.ref
                                                 .read(rootProvider.notifier)
                                                 .loadsidebar();
-                                            final location = GoRouterState.of(
-                                                    rootLayoutKey
-                                                        .currentState!.context)
-                                                .uri
-                                                .toString();
+                                            final location = GoRouterState.of(context).uri.toString();
                                             context.pushReplacement(
                                                 '$location?time=${DateTime.now().millisecondsSinceEpoch}');
                                           }
-                                        },
-                                      ),
-                                    ),
-                                  );
-                                }
-                              } else if (whitelabel.loggedin) {
-                                final dir =
-                                    await getApplicationSupportDirectory();
-                                final cookieJar = PersistCookieJar(
-                                  storage: FileStorage('${dir.path}/.cookies/'),
-                                );
-                                await cookieJar.delete(Uri.parse(
-                                  'https://www.${whitelabel.whitelabel.domain}',
-                                ));
-                                final hiveStore =
-                                    HiveCacheStore('${dir.path}/.dio_cache ');
-                                await hiveStore.deleteFromPath(RegExp(
-                                    'https://www.${whitelabel.whitelabel.domain}'));
-                                await fpApiRequests
-                                    .logout(whitelabel.whitelabel.friendlyName);
-                                await whitelabels.removeLoggedInLabel(
-                                    whitelabel.whitelabel.friendlyName);
-                                if ((await whitelabels
-                                            .getFirstLoggedInLabelOrDefault())
-                                        .friendlyName ==
-                                    (await settings.getKey('whitelabel'))) {
-                                  rootLayoutKey.currentState!.ref
-                                      .read(mediaPlayerServiceProvider.notifier)
-                                      .changeState(MediaPlayerState.none);
-                                }
-                                await settings.setKey(
-                                    'whitelabel',
-                                    (await whitelabels
-                                            .getFirstLoggedInLabelOrDefault())
-                                        .friendlyName);
-                                rootLayoutKey.currentState!.ref
-                                    .read(rootProvider.notifier)
-                                    .loadsidebar();
-                                final location =
-                                    GoRouterState.of(context).uri.toString();
-                                context.pushReplacement(
-                                    '$location?time=${DateTime.now().millisecondsSinceEpoch}');
-                                if (context.mounted &&
-                                    await whitelabels
-                                            .getLoggedInLabelsLength() ==
-                                        0) {
-                                  context.go('/login');
-                                }
-                              } else {
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: const Text('Login'),
-                                    content: LoginFields(
-                                      usernameController:
-                                          TextEditingController(),
-                                      passwordController:
-                                          TextEditingController(),
-                                      onSubmitted: (username, password, context,
-                                          needstwofa, logincomplete) {
-                                        LoginManager().login(username, password,
-                                            context, needstwofa, logincomplete,
-                                            optionalTwoFA: true,
-                                            whitelabel: whitelabel.whitelabel);
-                                      },
-                                      needstwofa: () {
+                                      } catch (e) {
                                         if (context.mounted) {
-                                          context.pop();
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: const Text('2FA'),
-                                              content: TwoFAFields(
-                                                twofaCodeController:
-                                                    TextEditingController(),
-                                                whitelabel:
-                                                    whitelabel.whitelabel,
-                                                twofa: (String code,
-                                                        WhiteLabel whitelabel,
-                                                        BuildContext context,
-                                                        Function
-                                                            twofacomplete) async =>
-                                                    await LoginManager().twofa(
-                                                        code,
-                                                        whitelabel,
-                                                        context,
-                                                        twofacomplete,
-                                                        optionalTwoFA: true),
-                                                twofacomplete: () {
-                                                  if (context.mounted) {
-                                                    context.pop();
-
-                                                    rootLayoutKey
-                                                        .currentState!.ref
-                                                        .read(rootProvider
-                                                            .notifier)
-                                                        .loadsidebar();
-                                                    final location =
-                                                        GoRouterState.of(
-                                                                rootLayoutKey
-                                                                    .currentState!
-                                                                    .context)
-                                                            .uri
-                                                            .toString();
-                                                    context.pushReplacement(
-                                                        '$location?time=${DateTime.now().millisecondsSinceEpoch}');
-                                                  }
-                                                },
-                                              ),
-                                            ),
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Login failed: $e')),
                                           );
                                         }
-                                      },
-                                      logincomplete: () {
-                                        if (context.mounted) {
-                                          context.pop();
-                                          rootLayoutKey.currentState!.ref
-                                              .read(rootProvider.notifier)
-                                              .loadsidebar();
-                                          final location = GoRouterState.of(
-                                                  rootLayoutKey
-                                                      .currentState!.context)
-                                              .uri
-                                              .toString();
-                                          context.pushReplacement(
-                                              '$location?time=${DateTime.now().millisecondsSinceEpoch}');
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            child: Text(
-                                twoFARequired[whitelabel.friendlyName] == true
-                                    ? 'Enter 2FA'
-                                    : whitelabel.loggedin
-                                        ? 'Logout'
-                                        : 'Login'),
+                                      }
+                                    }
+                                  },
+                                ),
+                              ElevatedButton(
+                                onPressed: () async {
+                                 if (whitelabel.loggedin) {
+                                    try {
+                                      // Logout - use whitelabel-specific tokens
+                                      final oauth2Service = OAuth2Service();
+                                      final accessToken = await oauth2Service.getAccessToken(
+                                        whitelabel: whitelabel.whitelabel.friendlyName,
+                                      );
+                                      
+                                      // Try to revoke token on server
+                                      if (accessToken != null) {
+                                        await oauth2Service.logout(accessToken);
+                                      }
+                                      
+                                      // Clear OAuth2 client from cache
+                                      fpApiRequests.clearOAuth2Client(whitelabel.whitelabel.friendlyName);
+                                      
+                                      // Clear OAuth2 tokens for this whitelabel
+                                      await oauth2Service.clearStoredTokens(
+                                        whitelabel: whitelabel.whitelabel.friendlyName,
+                                      );
+                                      
+                                      // Clear cookies (try both with and without www)
+                                      final dir = await getApplicationSupportDirectory();
+                                      final cookieJar = PersistCookieJar(
+                                        storage: FileStorage('${dir.path}/.cookies/'),
+                                      );
+                                      await cookieJar.delete(Uri.parse(
+                                        'https://www.${whitelabel.whitelabel.domain}',
+                                      ));
+                                      await cookieJar.delete(Uri.parse(
+                                        'https://${whitelabel.whitelabel.domain}',
+                                      ));
+                                      
+                                      // Clear cache
+                                      final hiveStore = HiveCacheStore('${dir.path}/.dio_cache');
+                                      await hiveStore.deleteFromPath(RegExp(
+                                          'https://www.${whitelabel.whitelabel.domain}'));
+                                      
+                                      // Call logout API endpoint
+                                        await fpApiRequests.logout(whitelabel.whitelabel.friendlyName);
+                                      
+                                      // Remove from logged in labels
+                                      await whitelabels.removeLoggedInLabel(
+                                          whitelabel.whitelabel.friendlyName);
+                                      
+                                      // Update selected whitelabel if needed
+                                      if ((await whitelabels.getFirstLoggedInLabelOrDefault())
+                                              .friendlyName ==
+                                          (await settings.getKey('whitelabel'))) {
+                                        rootLayoutKey.currentState?.ref
+                                            .read(mediaPlayerServiceProvider.notifier)
+                                            .changeState(MediaPlayerState.none);
+                                      }
+                                      
+                                      await settings.setKey(
+                                          'whitelabel',
+                                          (await whitelabels.getFirstLoggedInLabelOrDefault())
+                                              .friendlyName);
+                                      
+                                      // Reload sidebar
+                                      rootLayoutKey.currentState?.ref
+                                          .read(rootProvider.notifier)
+                                          .loadsidebar();
+                                      
+                                      // Refresh the page
+                                      if (context.mounted) {
+                                        final location = GoRouterState.of(context).uri.toString();
+                                        context.pushReplacement(
+                                            '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                      }
+                                      
+                                      // If no accounts left, go to login
+                                      if (context.mounted &&
+                                          await whitelabels.getLoggedInLabelsLength() == 0) {
+                                        context.go('/login');
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Logout failed: $e')),
+                                        );
+                                      }
+                                    }
+                                } else {
+                                  // Login with OAuth2
+                                  final oauth2Service = OAuth2Service();
+                                  final result = await oauth2Service.login();
+                                  
+                                  if (result.isSuccess) {
+                                    await oauth2Service.storeTokens(
+                                      result,
+                                      whitelabel: whitelabel.whitelabel.friendlyName,
+                                    );
+                                    final userId = result.userInfo?['sub'] ?? 'oauth2_user';
+                                    await whitelabels.addLoggedInLabel(
+                                        '${whitelabel.whitelabel.friendlyName}-$userId');
+                                    
+                                    if (context.mounted) {
+                                      rootLayoutKey.currentState!.ref
+                                          .read(rootProvider.notifier)
+                                          .loadsidebar();
+                                      final location =
+                                          GoRouterState.of(context).uri.toString();
+                                      context.pushReplacement(
+                                          '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                    }
+                                  }
+                                }
+                              },
+                              child: Text(whitelabel.loggedin ? 'Logout' : 'Login'),
+                            ),
+                            ],
                           ),
                         );
                       },
@@ -1520,7 +1537,6 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
     );
   }
 }
-
 class ToggleSetting extends StatefulWidget {
   const ToggleSetting({
     super.key,
@@ -1555,6 +1571,94 @@ class _ToggleSettingState extends State<ToggleSetting> {
           ),
         );
       },
+    );
+  }
+}
+
+class PlayerTypeSelector extends StatefulWidget {
+  const PlayerTypeSelector({super.key});
+  @override
+  State<PlayerTypeSelector> createState() => _PlayerTypeSelectorState();
+}
+
+class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
+  PlayerType? selectedVODPlayerType;
+  PlayerType? selectedLivePlayerType;
+  @override
+  void initState() {
+    super.initState();
+    _loadPlayerType();
+  }
+  Future<void> _loadPlayerType() async {
+    final playerVODTypeString = await Settings().getKey('player_backend');
+    PlayerType playerVODType;
+    if (playerVODTypeString.isEmpty) {
+      // Use default based on platform
+      playerVODType = Platform.isAndroid || Platform.isIOS
+          ? PlayerType.betterPlayer
+          : PlayerType.mediaKit;
+    } else {
+      // Convert string to enum
+      playerVODType = PlayerType.values.firstWhere(
+        (e) => e.toString() == 'PlayerType.$playerVODTypeString',
+        orElse: () => Platform.isAndroid || Platform.isIOS
+            ? PlayerType.betterPlayer
+            : PlayerType.mediaKit,
+      );
+    }
+    setState(() {
+      selectedVODPlayerType = playerVODType;
+    });
+  }
+  Future<void> _setPlayerType(PlayerType? type) async {
+    if (type == null) return;
+    final enumString = type.toString().split('.').last;
+    await Settings().setKey('player_backend', enumString);
+    setState(() {
+      selectedVODPlayerType = type;
+    });
+    await MediaPlayerService().loadPlayer(type);
+  }
+  String _getPlayerTypeName(PlayerType type) {
+    switch (type) {
+      case PlayerType.mediaKit:
+        return 'Media Kit';
+      case PlayerType.betterPlayer:
+        return 'Better Player';
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    if (selectedVODPlayerType == null) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RadioGroup(
+          groupValue: selectedVODPlayerType,
+          onChanged: _setPlayerType,
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'Player Backend',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              RadioListTile<PlayerType>(
+                title: Text(_getPlayerTypeName(PlayerType.mediaKit)),
+                value: PlayerType.mediaKit,
+              ),
+              RadioListTile<PlayerType>(
+                title: Text(_getPlayerTypeName(PlayerType.betterPlayer)),
+                value: PlayerType.betterPlayer,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

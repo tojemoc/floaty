@@ -589,8 +589,9 @@ class VideoAttachmentModel {
   final bool isProcessing;
   final String primaryBlogPost;
   final ImageModel thumbnail;
+  final ImageModel timelineSprite;
   final bool isAccessible;
-
+  
   VideoAttachmentModel({
     required this.id,
     required this.guid,
@@ -606,6 +607,7 @@ class VideoAttachmentModel {
     required this.isProcessing,
     required this.primaryBlogPost,
     required this.thumbnail,
+    required this.timelineSprite,
     required this.isAccessible,
   });
 

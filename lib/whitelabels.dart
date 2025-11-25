@@ -16,6 +16,7 @@ class Whitelabels {
       chatUrl: "https://chat.floatplane.com",
       cookieName: "sails.sid",
       format: "hls.mpegts",
+      oauthconfigurl: "https://auth.floatplane.com/realms/floatplane/.well-known/openid-configuration",
       sort: 0,
       features: ['live'],
     ),
@@ -27,8 +28,22 @@ class Whitelabels {
       apiUrl: 'https://www.sauceplus.com/api',
       cookieName: '__Host-sp-sess',
       format: 'hls.mpegts',
+      oauthconfigurl: "https://auth.sauceplus.com/realms/sauceplus/.well-known/openid-configuration",
       sort: 1,
       features: ['freeSubscriptions', 'unifiedSubscription'],
+    ),
+    WhiteLabel(
+      name: "Floatplane Pre-Prod",
+      friendlyName: "floatplanepp",
+      domain: 'pp.floatplane.com',
+      logoPath: "assets/whitelabels_logos/floatplanepp.png",
+      apiUrl: "https://pp.floatplane.com/api",
+      chatUrl: "https://chat.floatplane.com",
+      cookieName: "sails.sid.preprod",
+      format: "hls.mpegts",
+      oauthconfigurl: "https://auth.floatplane.com/realms/floatplane-pp/.well-known/openid-configuration",
+      sort: 2,
+      features: ['live'],
     ),
   ];
 
@@ -139,10 +154,10 @@ class Whitelabels {
 
   Future<void> removeLoggedInLabel(String label) async {
     var labels = await getLoggedInLabels();
-    label = labels.firstWhere((element) => element.split('-')[0] == label);
-    labels.remove(label);
-    final labelsString = labels.join(',');
-    await settings.setKey('LoggedInLabels', labelsString);
+      final matchingLabel = labels.firstWhere((element) => element.split('-')[0] == label);
+      labels.remove(matchingLabel);
+      final labelsString = labels.join(',');
+      await settings.setKey('LoggedInLabels', labelsString);
   }
 
   Future<void> clearLoggedInLabels() async {
@@ -159,6 +174,8 @@ class WhiteLabel {
   final String? chatUrl;
   final String cookieName;
   final String format;
+  final String? oauthconfigurl;
+  final String? oauthappname;
   final int sort;
   final List<String> features;
 
@@ -170,6 +187,8 @@ class WhiteLabel {
     required this.apiUrl,
     required this.cookieName,
     required this.format,
+    this.oauthconfigurl,
+    this.oauthappname,
     required this.sort,
     required this.features,
     this.chatUrl,

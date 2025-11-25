@@ -109,9 +109,7 @@ class DownloadManager {
   }
 
   Future<void> moveToDownloads(DownloadTask task) async {
-    try {
       final extension = task.filename.split('.').last.toLowerCase();
-      print(extension);
 
       SharedStorage targetStorage;
 
@@ -132,7 +130,6 @@ class DownloadManager {
       if (!Platform.isAndroid && !Platform.isIOS) {
         targetStorage = SharedStorage.downloads;
       }
-      print(targetStorage);
       
 
       // Try to move the file multiple times if needed
@@ -141,16 +138,13 @@ class DownloadManager {
       bool success = false;
 
       while (attempts < maxAttempts && !success) {
-        print(attempts);
         try {
           final newFilePath = await FileDownloader().moveToSharedStorage(
             task,
             targetStorage,
           );
-          print(newFilePath);
 
           if (newFilePath != null) {
-            print('success');
             _movedFilePaths[task.taskId] = newFilePath;
             success = true;
             break;
@@ -167,15 +161,12 @@ class DownloadManager {
       if (!success) {
         // As a fallback, try to move to downloads
         if (targetStorage != SharedStorage.downloads) {
-          print('fallback');
           final newFilePath = await FileDownloader().moveToSharedStorage(
             task,
             SharedStorage.downloads,
           );
-          print(newFilePath);
           if (newFilePath != null) {
             _movedFilePaths[task.taskId] = newFilePath;
-            print('fallback failed');
           }
         }
       }
@@ -188,8 +179,5 @@ class DownloadManager {
           _movedFilePaths.remove(key);
         }
       }
-    } catch (e) {
-      print(e);
-    }
   }
 }

@@ -84,7 +84,15 @@ class RootNotifier extends StateNotifier<RootState> {
       )
           .listen((fetchedCreators) {
         if (!mounted) return;
-        state = state.copyWith(creators: fetchedCreators);
+        // Deduplicate by creator ID to prevent duplicates in sidebar
+        final seenIds = <String>{};
+        final uniqueCreators = fetchedCreators.where((creator) {
+          final id = creator.id ?? '';
+          if (id.isEmpty || seenIds.contains(id)) return false;
+          seenIds.add(id);
+          return true;
+        }).toList();
+        state = state.copyWith(creators: uniqueCreators);
       });
       fpApiRequests
           .getUser(

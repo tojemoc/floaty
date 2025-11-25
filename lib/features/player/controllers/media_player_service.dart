@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:floaty/features/api/models/definitions.dart';
 import 'dart:async';
 import 'package:floaty/features/api/repositories/fpapi.dart';
-import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
+import 'package:floaty/features/player/models/seekbar_chapter.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
+import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
@@ -17,56 +20,50 @@ import 'package:logging/logging.dart';
 import 'audio_handler.dart';
 import 'windows_media_controls.dart';
 import '../models/video_quality.dart';
+import 'package:floaty/features/player/models/subtitle_style.dart';
 import 'package:floaty/settings.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
-
+import 'package:better_player_plus/better_player_plus.dart';
+enum PlayerType {
+  mediaKit,
+  betterPlayer,
+}
 enum MediaType {
   audio,
   video,
   image,
 }
-
 enum MediaPlayerState {
   none,
   main,
   mini,
   pip,
 }
-
 final mediaPlayerServiceProvider =
     StateNotifierProvider<MediaPlayerService, MediaPlayerState>(
         (ref) => MediaPlayerService());
-
 class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   PackageInfo? packageInfo;
   String userAgent = 'FloatyClient/error, CFNetwork';
   static final MediaPlayerService _instance = MediaPlayerService._internal();
-
-  factory MediaPlayerService() {
-    return _instance;
-  }
-
-  MediaPlayerService._internal() : super(MediaPlayerState.none) {
-    _log = Logger('MediaPlayerService');
-    globalPlayer = Player(); // Initialize player immediately
-    _subtitlesEnabled = false; // Default value until initialized
-    _initSettings(); // Initialize settings
-  }
-
-  Future<void> _initSettings() async {
-    _subtitlesEnabled = (await Settings().getBool('subtitles_enabled'));
-    state = state; // Notify listeners
-  }
-
-  static Player? globalPlayer;
-  Player get player => globalPlayer!;
+  PlayerType? selectedPlayerType;
+  PlayerType? loadedPlayerType;
+  static Player? mediaKitPlayer;
+  BetterPlayerController? _betterPlayerController;
+  GlobalKey<State<StatefulWidget>> betterPlayerGlobalKey = GlobalKey();
+  Player get mediaKit => mediaKitPlayer!;
+  BetterPlayerController get betterPlayer => _betterPlayerController!;
+  BetterPlayerController? betterPlayerController;
   FloatyAudioHandler? audioHandler;
   WindowsMediaControls? windowsControls;
   late final Logger _log;
-
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _buffer = Duration.zero;
+  bool _buffering = false;
+  bool _completed = false;
+  double _playbackSpeed = 1.0;
   double _volume = 1.0;
   String? _currentMediaUrl;
   MediaType? _currentMediaType;
@@ -74,10 +71,10 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   String? _currentArtist;
   String? _currentArtistImage;
   String? _currentThumbnailUrl;
+  ImageModel? _currentTimelineSprite;
   String? _currentPostId;
   bool _currentDiscoverable = false;
   bool _live = false;
-  String _whitelabelName = '';
   dynamic _currentAttachment;
   VideoQuality? _currentQuality;
   List<VideoQuality> _availableQualities = [];
@@ -88,15 +85,46 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   int? _currentSubtitleTrackIndex;
   bool _pip = false;
   Size? _restoreSize;
-
+  List<SeekbarChapter>? _chapters;
+  String? _whitelabelName;
+  WhiteLabel? _whitelabel;
   late SimplePip _simplePip;
-
+  final StreamController<bool> _playingController =
+      StreamController<bool>.broadcast();
+  final StreamController<Duration> _positionController =
+      StreamController<Duration>.broadcast();
+  final StreamController<Duration> _durationController =
+      StreamController<Duration>.broadcast();
+  final StreamController<Duration> _bufferController =
+      StreamController<Duration>.broadcast();
+  final StreamController<double> _volumeController =
+      StreamController<double>.broadcast();
+  final StreamController<bool> _completedController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _bufferingController =
+      StreamController<bool>.broadcast();
+  final StreamController<double> _playbackSpeedController =
+      StreamController<double>.broadcast();
+  final StreamController<String?> _subtitleTextController =
+      StreamController<String?>.broadcast();
+  Stream<String?> get subtitleTextStream => _subtitleTextController.stream;
+  List<_VttCue> _currentCues = [];
+  final StreamController<SubtitleStyle> _subtitleStyleController =
+      StreamController<SubtitleStyle>.broadcast();
+  Stream<SubtitleStyle> get subtitleStyleStream =>
+      _subtitleStyleController.stream;
+  late SubtitleStyle _subtitleStyle = SubtitleStyle.defaultStyle();
+  SubtitleStyle get currentSubtitleStyle => _subtitleStyle;
   // Getters
   VideoController? get videoController => _videoController;
   bool get isPlaying => _isPlaying;
-  bool get playing => globalPlayer?.state.playing ?? false;
+  bool get playing => _isPlaying;
+  Duration get buffer => _buffer;
+  bool get buffering => _buffering;
   Duration get currentPosition => _position;
+  Duration get currentDuration => _duration;
   Duration get audioDuration => _duration;
+  double get playbackSpeed => _playbackSpeed;
   double get volumeLevel => _volume;
   VideoQuality? get currentQuality => _currentQuality;
   List<VideoQuality> get availableQualities => _availableQualities;
@@ -107,6 +135,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   String? get currentArtist => _currentArtist;
   String? get currentArtistImage => _currentArtistImage;
   String? get currentThumbnailUrl => _currentThumbnailUrl;
+  ImageModel? get currentTimelineSprite => _currentTimelineSprite;
   String? get currentPostId => _currentPostId;
   bool get currentLive => _live;
   String? get currentAttachmentId => _currentAttachment?.id;
@@ -114,36 +143,188 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   String? get selectedMediaName => _currentMediaType?.name;
   SimplePip get simplePip => _simplePip;
   MediaPlayerState get mediastate => state;
-
+  List<SeekbarChapter>? get chapters => _chapters;
+  // Unified stream getters
+  Stream<bool> get playingStream => _playingController.stream;
+  Stream<Duration> get positionStream => _positionController.stream;
+  Stream<Duration> get durationStream => _durationController.stream;
+  Stream<Duration> get bufferStream => _bufferController.stream;
+  Stream<double> get volumeStream => _volumeController.stream;
+  Stream<bool> get completedStream => _completedController.stream;
+  Stream<bool> get bufferingStream => _bufferingController.stream;
+  Stream<double> get playbackSpeedStream => _playbackSpeedController.stream;
+  factory MediaPlayerService() {
+    return _instance;
+  }
+  MediaPlayerService._internal() : super(MediaPlayerState.none) {
+    _log = Logger('MediaPlayerService');
+    _log.info('Initializing MediaPlayerService...');
+    _init(); // Initialize
+  }
+  Future<void> _init() async {
+    packageInfo = await PackageInfo.fromPlatform();
+    const flavor =
+        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
+    userAgent =
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
+    // Load player type from settings (stored as string)
+    final playerTypeString = await Settings().getKey('player_backend');
+    if (playerTypeString.isEmpty) {
+      selectedPlayerType = Platform.isAndroid || Platform.isIOS
+          ? PlayerType.betterPlayer
+          : PlayerType.mediaKit;
+    } else {
+      selectedPlayerType = PlayerType.values.firstWhere(
+        (e) => e.toString() == 'PlayerType.$playerTypeString',
+        orElse: () => Platform.isAndroid || Platform.isIOS
+            ? PlayerType.betterPlayer
+            : PlayerType.mediaKit,
+      );
+    }
+    await loadPlayer(selectedPlayerType ??
+        (Platform.isAndroid || Platform.isIOS
+            ? PlayerType.betterPlayer
+            : PlayerType.mediaKit));
+    await _startSession();
+    _subtitlesEnabled =
+        await settings.getBool('subtitles_enabled', defaultValue: false);
+    _currentSubtitleTrackIndex =
+        await settings.getDynamic('subtitle_track_index', defaultValue: 0);
+    // Load subtitle style
+    try {
+      final size = (await settings.getDynamic('subtitle_style_size',
+          defaultValue: 24)) as num;
+      final weightStr = (await settings.getKey('subtitle_style_weight'));
+      final bg = (await settings.getDynamic('subtitle_style_bg_opacity',
+          defaultValue: 0.5)) as num;
+      final colorStr = await settings.getKey('subtitle_style_color');
+      _subtitleStyle = SubtitleStyle(
+        fontSize: size.toDouble(),
+        fontWeight:
+            _fontWeightFromString(weightStr.isEmpty ? 'Semi Bold' : weightStr),
+        backgroundOpacity: bg.toDouble(),
+        color: _colorFromHex(colorStr.isEmpty ? '#FFFFFF' : colorStr),
+      );
+    } catch (_) {
+      _subtitleStyle = SubtitleStyle.defaultStyle();
+    }
+    _subtitleStyleController.add(_subtitleStyle);
+  }
+  Future<void> loadPlayer(PlayerType playerType) async {
+    if (playerType == loadedPlayerType) return;
+    if (loadedPlayerType != null) {
+      switch (loadedPlayerType) {
+        case PlayerType.mediaKit:
+          await mediaKitPlayer!.dispose();
+          mediaKitPlayer = null;
+          break;
+        case PlayerType.betterPlayer:
+          _betterPlayerController?.dispose(forceDispose: true);
+          _betterPlayerController = null;
+          break;
+        default:
+          break;
+      }
+    }
+    switch (playerType) {
+      case PlayerType.mediaKit:
+        _log.info('Loading MediaKit player...');
+        try {
+          mediaKitPlayer = Player();
+          MediaKit.ensureInitialized();
+          loadedPlayerType = playerType;
+        } catch (e) {
+          _log.severe('Failed to load MediaKit player', e);
+        }
+        break;
+      case PlayerType.betterPlayer:
+        _log.info('No initialization required for BetterPlayer.');
+        loadedPlayerType = playerType;
+        break;
+    }
+    if (playerType != PlayerType.betterPlayer) {
+      _setupPlayerListeners();
+    }
+    _log.info('MediaPlayerService initialization completed successfully');
+  }
   void _setupPlayerListeners() {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
-    _simplePip = SimplePip(
-      onPipExited: () {
-        if (_live) {
-          rootLayoutKey.currentContext?.go('/live/$currentPostId');
-        } else {
-          rootLayoutKey.currentContext?.go('/post/$currentPostId');
-        }
-      },
-    );
-    if (globalPlayer == null) return;
-
-    if (_live == true) {
-      (globalPlayer!.platform as NativePlayer)
-          .setProperty('profile', 'low-latency');
-    } else {
-      (globalPlayer!.platform as NativePlayer)
-          .setProperty('profile', 'default');
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        mediaKit.stream.position.listen((position) {
+          _position = position;
+          _positionController.add(position);
+        });
+        mediaKit.stream.duration.listen((duration) {
+          _duration = duration;
+          _durationController.add(duration);
+        });
+        mediaKit.stream.volume.listen((volume) {
+          _volume = volume / 100; // Convert from 0-100 to 0-1
+          _volumeController.add(_volume);
+        });
+        mediaKit.stream.playing.listen((playing) {
+          _isPlaying = playing;
+          _playingController.add(playing);
+        });
+        mediaKit.stream.buffer.listen((buffer) {
+          _buffer = buffer;
+          _bufferController.add(buffer);
+        });
+        mediaKit.stream.buffering.listen((buffering) {
+          _buffering = buffering;
+          _bufferingController.add(buffering);
+        });
+        mediaKit.stream.completed.listen((completed) {
+          _completed = completed;
+          _completedController.add(completed);
+        });
+        mediaKit.stream.rate.listen((rate) {
+          _playbackSpeed = rate;
+          _playbackSpeedController.add(rate);
+        });
+        break;
+      case PlayerType.betterPlayer:
+        _betterPlayerController!.addEventsListener((progress) async {
+          _position =
+              _betterPlayerController!.videoPlayerController!.value.position;
+          _positionController.add(_position);
+          final duration =
+              _betterPlayerController!.videoPlayerController!.value.duration;
+          if (duration != _duration) {
+            _duration = duration ?? Duration.zero;
+            _durationController.add(_duration);
+          }
+          final playing =
+              _betterPlayerController!.videoPlayerController!.value.isPlaying;
+          if (playing != _isPlaying) {
+            _isPlaying = playing;
+            _playingController.add(_isPlaying);
+          }
+          final completed = _betterPlayerController!
+                  .videoPlayerController!.value.position ==
+              _betterPlayerController!.videoPlayerController!.value.duration;
+          if (completed != _completed) {
+            _completed = completed;
+            _completedController.add(_completed);
+          }
+        });
+        _betterPlayerController!.addEventsListener((setSpeed) {
+          final speed =
+              _betterPlayerController!.videoPlayerController!.value.speed;
+          if (speed != _playbackSpeed) {
+            _playbackSpeedController.add(speed);
+            _playbackSpeed = speed;
+          }
+        });
+        break;
     }
-
-    player.stream.position.listen((position) async {
-      _position = position;
+    positionStream.listen((position) async {
       if (_live != true) {
         if (_lastReportedPosition == null ||
             position.inMinutes > _lastReportedPosition!.inMinutes) {
           _lastReportedPosition = position;
-
           fpApiRequests.progress(
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
               _currentAttachment.id!,
@@ -151,22 +332,15 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
               _currentMediaType == MediaType.video ? 'video' : 'audio');
         }
       }
+      if (_subtitlesEnabled && _currentCues.isNotEmpty) {
+        final text = _activeTextFor(position);
+        _subtitleTextController.add(text);
+      } else {
+        _subtitleTextController.add(null);
+      }
     });
-
-    player.stream.duration.listen((duration) {
-      _duration = duration;
-    });
-
-    player.stream.volume.listen((volume) {
-      _volume = volume / 100; // Convert from 0-100 to 0-1
-    });
-
-    player.stream.playing.listen((playing) {
-      _isPlaying = playing;
-    });
-
     if (_live != true) {
-      player.stream.completed.listen((completed) async {
+      completedStream.listen((completed) async {
         fpApiRequests.progress(
             (await whitelabels.getSelectedWhitelabel()).friendlyName,
             _currentAttachment.id!,
@@ -174,14 +348,13 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
             _currentMediaType == MediaType.video ? 'video' : 'audio');
       });
     }
-
     if (_currentArtist?.toLowerCase() != 'ecc squad' && !Platform.isMacOS ||
         _currentArtist?.toLowerCase() != 'eccsquad' && !Platform.isMacOS ||
         !_currentDiscoverable && !Platform.isMacOS) {
-      player.stream.duration.listen((duration) {
+      durationStream.listen((duration) {
         if (duration == Duration.zero) {
           discordRPCController.updateRPC(
-              _whitelabelName,
+              _whitelabelName ?? 'Unknown Whitelabel',
               _currentTitle ?? 'Unknown Title',
               _currentArtist ?? 'Unknown Artist',
               _currentArtistImage ?? flavor,
@@ -189,7 +362,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
               _currentPostId ?? '');
         } else {
           discordRPCController.updateRPC(
-            _whitelabelName,
+            _whitelabelName ?? 'Unknown Whitelabel',
             _currentTitle ?? 'Unknown Title',
             _currentArtist ?? 'Unknown Artist',
             _currentArtistImage ?? flavor,
@@ -197,18 +370,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
             _currentPostId ?? '',
             timestamps: RPCTimestamps(
               start: DateTime.now().millisecondsSinceEpoch -
-                  player.state.position.inMilliseconds,
+                  _position.inMilliseconds,
               end: DateTime.now().millisecondsSinceEpoch +
-                  (duration - player.state.position).inMilliseconds,
+                  (duration - _position).inMilliseconds,
             ),
           );
         }
       });
-
-      player.stream.playing.listen((playing) {
+      playingStream.listen((playing) {
         if (playing == false) {
           discordRPCController.updateRPC(
-              _whitelabelName,
+              _whitelabelName ?? 'Unknown Whitelabel',
               _currentTitle ?? 'Unknown Title',
               _currentArtist ?? 'Unknown Artist',
               _currentArtistImage ?? flavor,
@@ -216,7 +388,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
               _currentPostId ?? '');
         } else {
           discordRPCController.updateRPC(
-            _whitelabelName,
+            _whitelabelName ?? 'Unknown Whitelabel',
             _currentTitle ?? 'Unknown Title',
             _currentArtist ?? 'Unknown Artist',
             _currentArtistImage ?? flavor,
@@ -224,18 +396,16 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
             _currentPostId ?? '',
             timestamps: RPCTimestamps(
               start: DateTime.now().millisecondsSinceEpoch -
-                  player.state.position.inMilliseconds,
+                  _position.inMilliseconds,
               end: DateTime.now().millisecondsSinceEpoch +
-                  (player.state.duration - player.state.position)
-                      .inMilliseconds,
+                  (_duration - _position).inMilliseconds,
             ),
           );
         }
       });
-
-      player.stream.position.listen((position) {
+      positionStream.listen((position) {
         discordRPCController.updateRPC(
-          _whitelabelName,
+          _whitelabelName ?? 'Unknown Whitelabel',
           _currentTitle ?? 'Unknown Title',
           _currentArtist ?? 'Unknown Artist',
           _currentArtistImage ?? flavor,
@@ -243,19 +413,14 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           _currentPostId ?? '',
           timestamps: RPCTimestamps(
             start: DateTime.now().millisecondsSinceEpoch -
-                player.state.position.inMilliseconds,
+                _position.inMilliseconds,
             end: DateTime.now().millisecondsSinceEpoch +
-                (player.state.duration - player.state.position).inMilliseconds,
+                (_duration - _position).inMilliseconds,
           ),
         );
       });
     }
   }
-
-  // Initialization state management
-  bool _isInitialized = false;
-  Completer<void>? _initializeCompleter;
-
   Future pipfalse() async {
     _pip = false;
     windowManager.setSize(_restoreSize ?? Size(480, 270));
@@ -264,44 +429,13 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     windowManager.center();
     windowManager.setTitleBarStyle(TitleBarStyle.normal);
   }
-
-  Future<void> _ensureInitialized() async {
-    packageInfo = await PackageInfo.fromPlatform();
-    const flavor =
-        String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
-    userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
-
-    if (_isInitialized) return;
-    _initializeCompleter = Completer<void>();
-
-    try {
-      _log.info('Initializing MediaPlayerService');
-
-      await player.setVolume(_volume * 100);
-
-      // Initialize audio service and platform-specific controls
-      await _startSession();
-
-      _setupPlayerListeners();
-      _isInitialized = true;
-      _log.info('MediaPlayerService initialization completed successfully');
-      _initializeCompleter!.complete();
-    } catch (e, stack) {
-      _log.severe('Error initializing MediaPlayerService', e, stack);
-      _initializeCompleter!.completeError(e, stack);
-      rethrow;
-    }
-  }
-
   Future<void> _startSession() async {
     Logger.root.info('starting audio service...');
-
     // Initialize media player
     if (!Platform.isWindows) {
       // For non-Windows platforms, initialize audio service
       audioHandler = await AudioService.init(
-        builder: () => FloatyAudioHandler(player),
+        builder: () => FloatyAudioHandler(this),
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'uk.bw86.floaty.channel.audio',
           androidNotificationChannelName: 'Audio playback',
@@ -309,17 +443,14 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         ),
       );
     }
-
     // Initialize Windows-specific controls
     if (Platform.isWindows) {
-      windowsControls = WindowsMediaControls(player);
+      windowsControls = WindowsMediaControls(this);
       await windowsControls?.initialize();
     }
-
     Logger.root.info('audio player initialized!');
   }
-
-  Future<void> setSource(
+  Future<dynamic> setSource(
     String whitelabelName,
     String url,
     MediaType type,
@@ -335,16 +466,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     Map<String, String>? headers,
     Duration start = Duration.zero,
     List<Map<String, dynamic>>? textTracks,
+    ImageModel? timelineSprite,
+    List<SeekbarChapter>? chapters,
   }) async {
+    dynamic controller;
     _log.info('Setting source: $url');
-    await _ensureInitialized();
-
+    // await _ensureInitialized();
     // Don't reinitialize if the URL hasn't changed
     if (_currentMediaUrl == url) {
       _log.info('Source URL unchanged, skipping initialization');
       return;
     }
-
     try {
       _log.info('Updating media source...');
       _whitelabelName = whitelabelName;
@@ -360,7 +492,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       _currentAttachment = attachment;
       _currentTextTracks = textTracks;
       _currentSubtitleTrackIndex = textTracks?.isNotEmpty == true ? 0 : null;
-
+      _currentCues = [];
+      _currentTimelineSprite = timelineSprite;
+      _chapters = chapters;
+      // Auto-initialize custom subtitles if user has them enabled and tracks exist
+      if (_subtitlesEnabled && (_currentTextTracks?.isNotEmpty ?? false)) {
+        try {
+          await setSubtitleTrack(_currentSubtitleTrackIndex ?? 0);
+        } catch (e, st) {
+          _log.warning('Failed to auto-initialize subtitles: $e', e, st);
+        }
+      }
       if (qualities != null) {
         _availableQualities = qualities;
         _currentQuality = qualities.first;
@@ -381,12 +523,8 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           _currentQuality = defaultQuality;
         }
       }
-
-      await player.stop();
-
       _log.info(
           'Setting up media with text tracks: ${textTracks?.length ?? 0}');
-
       final subtitleList = textTracks
               ?.map((track) => {
                     'title': track['language'] ?? 'Unknown',
@@ -396,59 +534,114 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
                   })
               .toList() ??
           [];
-
-      final whitelabel = whitelabels.getWhitelabel(_whitelabelName);
-
-      final media = Media(
-        url,
-        httpHeaders: headers ??
-            {
-              'User-Agent': userAgent,
-              'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
-              'Referer': 'https://www.${whitelabel.domain}/',
-              'Origin': 'https://www.${whitelabel.domain}',
-            },
-        start: start,
-        extras: {
-          'subtitle': subtitleList,
+      _whitelabel =
+          whitelabels.getWhitelabel(_whitelabelName ?? 'Unknown Whitelabel');
+      _simplePip = SimplePip(
+        onPipExited: () {
+          if (_live) {
+            rootLayoutKey.currentContext?.go('/live/$currentPostId');
+          } else {
+            rootLayoutKey.currentContext?.go('/post/$currentPostId');
+          }
         },
       );
-
-      await player.open(media);
-      _log.info('Media opened successfully');
-
-      // Initialize subtitle track if available
-      if (textTracks?.isNotEmpty == true && subtitlesEnabled) {
-        final defaultTrack = textTracks!.first;
-
-        await player.setSubtitleTrack(
-          SubtitleTrack.uri(
-            defaultTrack['src'],
-            title: defaultTrack['language'],
-            language: defaultTrack['language'],
-          ),
-        );
-        _currentSubtitleTrackIndex = 0;
+      late PlayerType player;
+      final playerTypeString = await Settings().getKey('player_backend');
+      if (playerTypeString.isEmpty) {
+        player = Platform.isAndroid || Platform.isIOS
+            ? PlayerType.betterPlayer
+            : PlayerType.mediaKit;
       } else {
-        _currentTextTracks = textTracks;
-        _currentSubtitleTrackIndex = 0;
+        player = PlayerType.values.firstWhere(
+          (e) => e.toString() == 'PlayerType.$playerTypeString',
+          orElse: () => Platform.isAndroid || Platform.isIOS
+              ? PlayerType.betterPlayer
+              : PlayerType.mediaKit,
+        );
       }
-
-      if (type == MediaType.video) {
-        _videoController = VideoController(player);
+      if (loadedPlayerType! != player) {
+        await loadPlayer(player);
+      }
+      switch (loadedPlayerType!) {
+        case PlayerType.mediaKit:
+          if (_live == true) {
+            (mediaKit.platform as NativePlayer)
+                .setProperty('profile', 'low-latency');
+          } else {
+            (mediaKit.platform as NativePlayer)
+                .setProperty('profile', 'default');
+          }
+          await mediaKit.stop();
+          final media = Media(
+            url,
+            httpHeaders: headers ??
+                {
+                  'User-Agent': userAgent,
+                  'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
+                  'Referer': 'https://www.${_whitelabel?.domain}/',
+                  'Origin': 'https://www.${_whitelabel?.domain}',
+                },
+            start: start,
+            extras: {
+              'subtitle': subtitleList,
+            },
+          );
+          await mediaKit.open(media);
+          _log.info('Media opened successfully');
+          // We use a custom subtitle overlay; do not activate MediaKit's built-in subtitles
+          _currentTextTracks = textTracks;
+          _currentSubtitleTrackIndex =
+              textTracks?.isNotEmpty == true ? 0 : null;
+          if (type == MediaType.video) {
+            _videoController = VideoController(mediaKit);
+          }
+          controller = _videoController;
+          break;
+        case PlayerType.betterPlayer:
+          _betterPlayerController = BetterPlayerController(
+              BetterPlayerConfiguration(
+                fit: BoxFit.contain,
+                autoPlay: true,
+                autoDetectFullscreenDeviceOrientation: true,
+                autoDetectFullscreenAspectRatio: true,
+                autoDispose: true,
+                startAt: start,
+                handleLifecycle: false,
+              ),
+              betterPlayerDataSource: BetterPlayerDataSource(
+                BetterPlayerDataSourceType.network,
+                url,
+                liveStream: _live,
+                headers: headers ??
+                    {
+                      'User-Agent': userAgent,
+                      'Cookie':
+                          await settings.getAuthTokenFromCookieJar() ?? '',
+                      'Referer': 'https://www.${_whitelabel?.domain}/',
+                      'Origin': 'https://www.${_whitelabel?.domain}',
+                    },
+                resolutions: qualities?.asMap().map((index, quality) =>
+                        MapEntry(quality.label, quality.url)) ??
+                    {},
+                subtitles: const [],
+                videoFormat: BetterPlayerVideoFormat.hls,
+              ));
+          _betterPlayerController!.setControlsEnabled(false);
+          _setupPlayerListeners();
+          controller = _betterPlayerController;
+          break;
       }
       // Update media metadata
       if (type == MediaType.audio || type == MediaType.video) {
         await _updateMediaMetadata(title, artist, artistImage, thumbnailUrl);
       }
-
       _log.info('Source set successfully');
+      return controller;
     } catch (e) {
       _log.severe('Error setting source: $e');
       rethrow;
     }
   }
-
   Future<void> _updateMediaMetadata(
     String? title,
     String? artist,
@@ -469,15 +662,13 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           'postId': _currentPostId,
         },
       ));
-
-      // Update playback state after setting media
+      // Update playback state after setting media0
       if (_isPlaying) {
         await audioHandler!.play();
       } else {
         await audioHandler!.pause();
       }
     }
-
     if (Platform.isWindows) {
       windowsControls?.updateMetadata(
         title: title ?? 'Unknown Title',
@@ -485,15 +676,13 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         thumbnailUrl: thumbnailUrl,
       );
     }
-
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
-
     if (_currentArtist?.toLowerCase() != 'ecc squad' && !Platform.isMacOS ||
         _currentArtist?.toLowerCase() != 'eccsquad' && !Platform.isMacOS ||
         !_currentDiscoverable && !Platform.isMacOS) {
       discordRPCController.updateRPC(
-          _whitelabelName,
+          _whitelabelName ?? 'Unknown Whitelabel',
           title ?? 'Unknown Title',
           artist ?? 'Unknown Artist',
           artistImage ?? flavor,
@@ -501,109 +690,145 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           _currentPostId ?? '');
     }
   }
-
   Future<void> enterpip() async {
-    _simplePip.enterPipMode(aspectRatio: (
-      globalPlayer?.state.width ?? 16,
-      globalPlayer?.state.height ?? 9
-    ));
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        _simplePip.enterPipMode(aspectRatio: (
+          mediaKit.state.width ?? 16,
+          mediaKit.state.height ?? 9
+        ));
+        break;
+      case PlayerType.betterPlayer:
+        _betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
+        break;
+    }
   }
-
   Future<void> play() async {
-    await _ensureInitialized();
-    if (_currentMediaType == MediaType.audio ||
-        _currentMediaType == MediaType.video) {
-      await player.play();
-      if (!Platform.isWindows) {
-        await audioHandler?.play();
-      }
-      _isPlaying = true;
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        // await _ensureInitialized();
+        if (_currentMediaType == MediaType.audio ||
+            _currentMediaType == MediaType.video) {
+          await mediaKit.play();
+          _isPlaying = true;
+          _playingController.add(_isPlaying);
+        }
+      case PlayerType.betterPlayer:
+        if (_betterPlayerController != null) {
+          if (_currentMediaType == MediaType.audio ||
+              _currentMediaType == MediaType.video) {
+            await _betterPlayerController!.videoPlayerController!.play();
+            _isPlaying = true;
+            _playingController.add(_isPlaying);
+          }
+        }
     }
   }
-
   Future<void> pause() async {
-    await _ensureInitialized();
-    if (_currentMediaType == MediaType.audio ||
-        _currentMediaType == MediaType.video) {
-      await player.pause();
-      if (!Platform.isWindows) {
-        await audioHandler?.pause();
-      }
-      _isPlaying = false;
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        // await _ensureInitialized();
+        if (_currentMediaType == MediaType.audio ||
+            _currentMediaType == MediaType.video) {
+          await mediaKit.pause();
+          _isPlaying = false;
+          _playingController.add(_isPlaying);
+        }
+      case PlayerType.betterPlayer:
+        if (_betterPlayerController != null) {
+          if (_currentMediaType == MediaType.audio ||
+              _currentMediaType == MediaType.video) {
+            await _betterPlayerController!.videoPlayerController!.pause();
+            _isPlaying = false;
+            _playingController.add(_isPlaying);
+          }
+        }
     }
   }
-
   Future<void> playpause() async {
-    await _ensureInitialized();
-    if (_currentMediaType == MediaType.audio ||
-        _currentMediaType == MediaType.video) {
-      if (_isPlaying) {
-        await pause();
-      } else {
-        await play();
-      }
+    if (_isPlaying) {
+      await pause();
+    } else {
+      await play();
     }
   }
-
   Future<void> seek(Duration position) async {
-    await _ensureInitialized();
-    if (_currentMediaType == MediaType.audio ||
-        _currentMediaType == MediaType.video) {
-      await player.seek(position);
-      if (!Platform.isWindows) {
-        await audioHandler?.seek(position);
-      }
-      _position = position;
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        // await _ensureInitialized();
+        if (_currentMediaType == MediaType.audio ||
+            _currentMediaType == MediaType.video) {
+          await mediaKit.seek(position);
+          _position = position;
+        }
+      case PlayerType.betterPlayer:
+        if (betterPlayerController != null) {
+          if (_currentMediaType == MediaType.audio ||
+              _currentMediaType == MediaType.video) {
+            await _betterPlayerController!.seekTo(position);
+            _position = position;
+          }
+        }
     }
   }
-
   Future<void> setVolume(double volume) async {
-    await _ensureInitialized();
-    if (_currentMediaType == MediaType.audio ||
-        _currentMediaType == MediaType.video) {
-      await player.setVolume(volume * 100); // Convert from 0-1 to 0-100
-      if (!Platform.isWindows) {
-        await audioHandler?.setVolume(volume);
-      }
-      _volume = volume;
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        // await _ensureInitialized();
+        if (_currentMediaType == MediaType.audio ||
+            _currentMediaType == MediaType.video) {
+          await mediaKit.setVolume(volume * 100); // Convert from 0-1 to 0-100
+          if (!Platform.isWindows) {
+            await audioHandler?.setVolume(volume);
+          }
+          _volume = volume;
+          _volumeController.add(_volume);
+        }
+      case PlayerType.betterPlayer:
+        if (betterPlayerController != null) {
+          if (_currentMediaType == MediaType.audio ||
+              _currentMediaType == MediaType.video) {
+            await _betterPlayerController!.setVolume(volume);
+            _volume = volume;
+            _volumeController.add(_volume);
+          }
+        }
     }
   }
-
   Future<void> changeQuality(VideoQuality quality,
       {Map<String, String>? headers}) async {
     if (!_availableQualities.contains(quality)) return;
-
-    final position = player.state.position;
-    final play = player.state.playing;
-
-    final media = Media(
-      quality.url,
-      httpHeaders: headers ??
-          {
-            'User-Agent': userAgent,
-            'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
-          },
-      start: position,
-    );
-
+    final position = _position;
+    final play = _isPlaying;
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        final media = Media(
+          quality.url,
+          httpHeaders: headers ??
+              {
+                'User-Agent': userAgent,
+                'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
+              },
+          start: position,
+        );
+        await mediaKit.open(media, play: play);
+        _videoController = VideoController(mediaKit);
+        break;
+      case PlayerType.betterPlayer:
+        _betterPlayerController!.setResolution(quality.url);
+        break;
+    }
     _currentQuality = quality;
     settings.setKey('preferred_quality', quality.label);
-
-    await player.open(media, play: play);
-    _videoController = VideoController(player);
   }
-
   Future<void> changeState(MediaPlayerState newState) async {
     if (state == newState) {
       return;
     }
-
-    if (globalPlayer == null) {
+    if (mediaKitPlayer == null) {
       return;
     }
-
     state = newState;
-
     switch (newState) {
       case MediaPlayerState.pip:
         if (!Platform.isIOS) {
@@ -645,88 +870,289 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         }
         break;
       case MediaPlayerState.none:
-        await stop();
+        if (!Platform.isWindows) {
+          await audioHandler?.stop();
+          await audioHandler?.session?.setActive(false);
+        } else {
+          await windowsControls?.stop();
+        }
         if (!Platform.isMacOS) {
           discordRPCController.clearRPC();
         }
         break;
     }
   }
-
   Future<void> setSpeed(double speed) async {
-    player.setRate(speed);
-  }
-
-  Future<void> toggleSubtitles() async {
-    _subtitlesEnabled = !_subtitlesEnabled;
-    await settings.setBool('subtitles_enabled', _subtitlesEnabled);
-    _log.info('Toggling subtitles: ${_subtitlesEnabled ? 'on' : 'off'}');
-
-    if (!_subtitlesEnabled) {
-      await player.setSubtitleTrack(SubtitleTrack.no());
-    } else if (_currentSubtitleTrackIndex != null &&
-        _currentTextTracks != null) {
-      final track = _currentTextTracks![_currentSubtitleTrackIndex!];
-
-      await player.setSubtitleTrack(
-        SubtitleTrack.uri(
-          track['src'],
-          title: track['language'],
-          language: track['language'],
-        ),
-      );
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        await mediaKit.setRate(speed);
+        break;
+      case PlayerType.betterPlayer:
+        _betterPlayerController!.setSpeed(speed);
+        break;
     }
-    state = state;
+    _playbackSpeed = speed;
   }
-
+  Future<bool> toggleSubtitles({bool? enabled}) async {
+    _subtitlesEnabled = enabled ?? !_subtitlesEnabled;
+    try {
+      await settings.setBool('subtitles_enabled', _subtitlesEnabled);
+    } catch (_) {}
+    if (!_subtitlesEnabled) {
+      _subtitleTextController.add(null);
+      return _subtitlesEnabled;
+    }
+    // If enabling and no cues loaded yet, try loading default track
+    if (_currentCues.isEmpty && _currentTextTracks?.isNotEmpty == true) {
+      final idx = _currentSubtitleTrackIndex ?? 0;
+      await setSubtitleTrack(idx);
+    }
+    return _subtitlesEnabled;
+  }
   Future<void> setSubtitleTrack(int index) async {
-    if (_currentTextTracks == null || index >= _currentTextTracks!.length) {
+    if (index == -1) {
+      await toggleSubtitles(enabled: false);
+      return;
+    }
+    if (_currentTextTracks == null ||
+        index < 0 ||
+        index >= _currentTextTracks!.length) {
       _log.warning('Invalid subtitle track index: $index');
       return;
     }
-
-    _log.info('Setting subtitle track to index $index');
-    _currentSubtitleTrackIndex = index;
-    final track = _currentTextTracks![index];
-
-    settings.setBool('subtitles_enabled', true);
-
-    await player.setSubtitleTrack(
-      SubtitleTrack.uri(
-        track['src'],
-        title: track['language'],
-        language: track['language'],
-      ),
-    );
-    state = state;
+    await settings.setDynamic('subtitle_track_index', index);
+    try {
+      final track = _currentTextTracks![index];
+      final url = track['src'];
+      if (url == null || (url is String && url.isEmpty)) {
+        _log.warning('Subtitle track has no URL');
+        return;
+      }
+      final dio = Dio();
+      final resp = await dio.get<String>(url,
+          options: Options(responseType: ResponseType.plain));
+      final content = resp.data ?? '';
+      _currentCues = _parseWebVtt(content);
+      _currentSubtitleTrackIndex = index;
+      await toggleSubtitles(enabled: true);
+      // Immediately emit current text based on latest position
+      _subtitleTextController.add(_activeTextFor(_position));
+    } catch (e, st) {
+      _log.severe('Failed to load subtitles: $e', st);
+    }
   }
-
+  // Style helpers & setters
+  Future<void> setSubtitleFontSize(double size) async {
+    _subtitleStyle = _subtitleStyle.copyWith(fontSize: size);
+    _subtitleStyleController.add(_subtitleStyle);
+    await settings.setDynamic('subtitle_style_size', size);
+  }
+  Future<void> setSubtitleFontWeight(FontWeight weight, String label) async {
+    _subtitleStyle = _subtitleStyle.copyWith(fontWeight: weight);
+    _subtitleStyleController.add(_subtitleStyle);
+    await settings.setKey('subtitle_style_weight', label);
+  }
+  Future<void> setSubtitleBackgroundOpacity(double opacity) async {
+    _subtitleStyle = _subtitleStyle.copyWith(backgroundOpacity: opacity);
+    _subtitleStyleController.add(_subtitleStyle);
+    await settings.setDynamic('subtitle_style_bg_opacity', opacity);
+  }
+  Future<void> setSubtitleColor(Color color) async {
+    _subtitleStyle = _subtitleStyle.copyWith(color: color);
+    _subtitleStyleController.add(_subtitleStyle);
+    await settings.setKey('subtitle_style_color', _hexFromColor(color));
+  }
   @override
   Future<void> dispose() async {
-    if (globalPlayer != null) {
-      await globalPlayer!.dispose();
-      globalPlayer = null;
+    switch (loadedPlayerType!) {
+      case PlayerType.betterPlayer:
+        betterPlayerController?.dispose();
+        break;
+      case PlayerType.mediaKit:
+        await mediaKit.dispose();
+        if (mediaKitPlayer != null) {
+          await mediaKitPlayer!.dispose();
+          mediaKitPlayer = null;
+        }
+        break;
     }
+    // Close unified stream controllers
+    await _playingController.close();
+    await _positionController.close();
+    await _durationController.close();
+    await _bufferController.close();
+    await _volumeController.close();
     if (!Platform.isWindows) {
       await audioHandler?.dispose();
+    } else {
+      await windowsControls?.dispose();
     }
-    await windowsControls?.dispose();
     if (!Platform.isMacOS) {
       discordRPCController.clearRPC();
     }
+    await _subtitleTextController.close();
+    await _subtitleStyleController.close();
     super.dispose();
   }
-
   Future<void> stop() async {
-    await player.stop();
-    if (!Platform.isWindows) {
-      await audioHandler?.stop();
-      // await audioHandler?;
-      await audioHandler?.session?.setActive(false);
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        await mediaKit.stop();
+        break;
+      case PlayerType.betterPlayer:
+        betterPlayerController?.pause();
+        break;
     }
-    await windowsControls?.stop();
-    if (!Platform.isMacOS) {
-      discordRPCController.clearRPC();
+  }
+  List<SeekbarChapter> parseSeekbarChapters(String input) {
+    final List<SeekbarChapter> chapters = [];
+    final timestampRegex = RegExp(r"(?:(\d{1,2}):)?(\d{1,2}):(\d{2})");
+    Duration? parseMatch(RegExpMatch m) {
+      final hStr = m.group(1);
+      final mStr = m.group(2);
+      final sStr = m.group(3);
+      if (mStr == null || sStr == null) return null;
+      final h = hStr != null ? int.tryParse(hStr) ?? 0 : 0;
+      final mi = int.tryParse(mStr) ?? 0;
+      final se = int.tryParse(sStr) ?? 0;
+      return Duration(hours: h, minutes: mi, seconds: se);
     }
+    final matches = timestampRegex.allMatches(input).toList();
+    for (var i = 0; i < matches.length; i++) {
+      final m = matches[i];
+      final startDur = parseMatch(m);
+      if (startDur == null) continue;
+      final titleStart = m.end;
+      final titleEnd =
+          i + 1 < matches.length ? matches[i + 1].start : input.length;
+      var title = input.substring(titleStart, titleEnd).trim();
+      title = title.replaceFirst(RegExp(r"^[\-\s:]+"), '').trim();
+      if (title.isEmpty) title = 'Chapter';
+      chapters.add(SeekbarChapter(start: startDur, title: title));
+    }
+    if (chapters.isNotEmpty && chapters.first.start > Duration.zero) {
+      chapters.insert(
+          0, const SeekbarChapter(start: Duration.zero, title: 'Intro'));
+    }
+    chapters.sort((a, b) => a.start.compareTo(b.start));
+    final unique = <int>{};
+    final out = <SeekbarChapter>[];
+    for (final c in chapters) {
+      final key = c.start.inSeconds;
+      if (unique.add(key)) out.add(c);
+    }
+    return out;
+  }
+}
+// Simple WebVTT cue
+class _VttCue {
+  final Duration start;
+  final Duration end;
+  final String text;
+  _VttCue(this.start, this.end, this.text);
+}
+extension on MediaPlayerService {
+  FontWeight _fontWeightFromString(String s) {
+    switch (s.toLowerCase()) {
+      case 'extra light':
+        return FontWeight.w200;
+      case 'light':
+        return FontWeight.w300;
+      case 'medium':
+        return FontWeight.w500;
+      case 'semi bold':
+        return FontWeight.w600;
+      case 'bold':
+        return FontWeight.w700;
+      default:
+        return FontWeight.w600;
+    }
+  }
+  String _hexFromColor(Color c) {
+    return '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+  Color _colorFromHex(String hex) {
+    String h = hex.replaceAll('#', '');
+    if (h.length == 6) {
+      h = 'FF$h';
+    }
+    return Color(int.parse(h, radix: 16));
+  }
+  List<_VttCue> _parseWebVtt(String content) {
+    final lines = content.replaceAll('\r\n', '\n').split('\n');
+    final cues = <_VttCue>[];
+    int i = 0;
+    // Skip optional WEBVTT header
+    if (lines.isNotEmpty &&
+        lines[0].trim().toUpperCase().startsWith('WEBVTT')) {
+      // skip header line
+      i = 1;
+    }
+    while (i < lines.length) {
+      // Skip comments & empty lines
+      if (lines[i].trim().isEmpty || lines[i].startsWith('NOTE')) {
+        i++;
+        continue;
+      }
+      // Optional cue id
+      String line = lines[i];
+      if (!line.contains('-->')) {
+        i++;
+        if (i >= lines.length) break;
+        line = lines[i];
+      }
+      if (!line.contains('-->')) {
+        // Not a timing line, skip
+        i++;
+        continue;
+      }
+      final parts = line.split('-->');
+      final startStr = parts[0].trim();
+      final endAndSettings = parts[1].trim();
+      final endStr = endAndSettings.split(RegExp(r"\s")).first;
+      final start = _parseTimestamp(startStr);
+      final end = _parseTimestamp(endStr);
+      i++;
+      final buffer = <String>[];
+      while (i < lines.length && lines[i].trim().isNotEmpty) {
+        buffer.add(lines[i]);
+        i++;
+      }
+      final text = buffer.join('\n');
+      if (start != null && end != null) {
+        cues.add(_VttCue(start, end, text));
+      }
+      // skip empty line
+      i++;
+    }
+    return cues;
+  }
+  Duration? _parseTimestamp(String s) {
+    // 00:00:01.000 or 00:01.000
+    final ts = s.trim();
+    final parts = ts.split(':');
+    int hours = 0, minutes = 0;
+    double seconds = 0;
+    if (parts.length == 3) {
+      hours = int.tryParse(parts[0]) ?? 0;
+      minutes = int.tryParse(parts[1]) ?? 0;
+      seconds = double.tryParse(parts[2].replaceAll(',', '.')) ?? 0;
+    } else if (parts.length == 2) {
+      minutes = int.tryParse(parts[0]) ?? 0;
+      seconds = double.tryParse(parts[1].replaceAll(',', '.')) ?? 0;
+    } else {
+      return null;
+    }
+    final millis = (seconds * 1000).round();
+    return Duration(hours: hours, minutes: minutes, milliseconds: millis);
+  }
+  String? _activeTextFor(Duration position) {
+    final ms = position.inMilliseconds;
+    for (final c in _currentCues) {
+      if (ms >= c.start.inMilliseconds && ms <= c.end.inMilliseconds) {
+        return c.text;
+      }
+    }
+    return null;
   }
 }

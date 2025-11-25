@@ -19,7 +19,7 @@ class DiscordRPCController {
     });
   }
 
-  init() {
+  void init() {
     FlutterDiscordRPC.initialize('1383892249133318144');
     FlutterDiscordRPC.instance.connect(autoRetry: true);
     FlutterDiscordRPC.instance.isConnectedStream.listen((isConnected) {
@@ -66,7 +66,7 @@ class DiscordRPCController {
             activityType: ActivityType.watching));
   }
 
-  clearRPC() {
+  void clearRPC() {
     FlutterDiscordRPC.instance.clearActivity();
   }
 

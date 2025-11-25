@@ -1,27 +1,96 @@
-import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:floaty/whitelabels.dart';
-import 'package:http_cache_hive_store/http_cache_hive_store.dart';
-import 'package:floaty/settings.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/logs/repositories/log_service.dart';
+import 'package:floaty/features/authentication/services/oauth2_service.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:get_it/get_it.dart';
-import 'package:dio/dio.dart';
-import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:oauth2/oauth2.dart' as oauth2;
+import 'package:http/http.dart' as http;
 
 final FPApiRequests fpApiRequests = GetIt.I<FPApiRequests>();
+
+/// Custom HTTP client wrapper that adds cookie support to oauth2 Client
+class _CookieHttpClient extends http.BaseClient {
+  final http.Client _inner = http.Client();
+  final PersistCookieJar cookieJar;
+
+  _CookieHttpClient(this.cookieJar);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Add cookies from jar to request
+    final uri = request.url;
+    final cookies = await cookieJar.loadForRequest(uri);
+    if (cookies.isNotEmpty) {
+      final cookieHeader = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+      request.headers['cookie'] = cookieHeader;
+    }
+
+    // Send request
+    final response = await _inner.send(request);
+
+    // Save cookies from response
+    final setCookieHeaders = response.headers['set-cookie'];
+    if (setCookieHeaders != null) {
+      final responseCookies = setCookieHeaders
+          .split(',')
+          .map((str) => Cookie.fromSetCookieValue(str))
+          .toList();
+      await cookieJar.saveFromResponse(uri, responseCookies);
+    }
+
+    return response;
+  }
+
+  @override
+  void close() {
+    _inner.close();
+  }
+}
 
 class FPApiRequests {
   String userAgent = 'FloatyClient/error, CFNetwork';
   late final PersistCookieJar cookieJar;
-  late final Dio _dio;
-  late final CacheOptions _cacheOptions;
+  late final OAuth2Service _oauth2Service;
+  final Map<String, oauth2.Client> _oauth2Clients = {};
+  late final http.Client _fallbackClient;
   PackageInfo? packageInfo;
+  
+  // Feature flag for cookie-based testing
+  bool get useCookieAuth => const bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
+  
+  /// Get the appropriate HTTP client for a specific whitelabel
+  Future<http.Client> getHttpClient(String whitelabel) async {
+    final authMethod = await _oauth2Service.getAuthMethod(whitelabel: whitelabel);
+    final useCookie = (authMethod == 'cookie') || (authMethod == null && useCookieAuth);
+    
+    if (!useCookie) {
+      // Try to get or create OAuth2 client for this whitelabel
+      if (!_oauth2Clients.containsKey(whitelabel)) {
+        final client = await createOAuth2Client(whitelabel: whitelabel);
+        if (client != null) {
+          _oauth2Clients[whitelabel] = client;
+        }
+      }
+      
+      if (_oauth2Clients.containsKey(whitelabel)) {
+        return _oauth2Clients[whitelabel]!;
+      }
+    }
+    
+    // Fallback to cookie client
+    return _fallbackClient;
+  }
+  
+  /// Get the appropriate HTTP client (OAuth2 or fallback with cookies)
+  /// This is kept for backwards compatibility but deprecated
+  @Deprecated('Use getHttpClient(whitelabel) instead')
+  http.Client get httpClient => _fallbackClient;
 
   FPApiRequests() {
     _init();
@@ -34,29 +103,98 @@ class FPApiRequests {
     userAgent =
         'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
     final dir = await getApplicationSupportDirectory();
+    
+    _oauth2Service = OAuth2Service();
+    
     cookieJar = PersistCookieJar(
       storage: FileStorage('${dir.path}/.cookies/'),
     );
-
-    _cacheOptions = CacheOptions(
-      store: HiveCacheStore('${dir.path}/.dio_cache'),
-      policy: CachePolicy
-          .request, // Only cache if server provides headers (like ETag)
-      hitCacheOnNetworkFailure: true,
-      priority: CachePriority.normal,
-      maxStale: const Duration(days: 7),
-    );
-
-    _dio = Dio(BaseOptions(
-      responseType: ResponseType.plain,
-      headers: {
-        'User-Agent': userAgent,
-      },
-      validateStatus: (_) => true,
-    ));
-
-    _dio.interceptors.add(CookieManager(cookieJar));
-    _dio.interceptors.add(DioCacheInterceptor(options: _cacheOptions));
+    
+    // Create fallback HTTP client with cookie support
+    _fallbackClient = _CookieHttpClient(cookieJar);
+    
+    // Initialize OAuth2 clients for all logged-in whitelabels
+    if (!useCookieAuth) {
+      _initOAuth2Clients();
+    }
+  }
+  
+  /// Initialize OAuth2 Clients for all logged-in whitelabels
+  Future<void> _initOAuth2Clients() async {
+    final loggedInLabels = await whitelabels.getLoggedInLabels();
+    for (final label in loggedInLabels) {
+      final whitelabelName = label.split('-')[0];
+      final authMethod = await _oauth2Service.getAuthMethod(whitelabel: whitelabelName);
+      if (authMethod == 'oauth2') {
+        final client = await createOAuth2Client(whitelabel: whitelabelName);
+        if (client != null) {
+          _oauth2Clients[whitelabelName] = client;
+        }
+      }
+    }
+  }
+  
+  /// Create or recreate OAuth2 client from stored credentials for a specific whitelabel
+  Future<oauth2.Client?> createOAuth2Client({String? whitelabel}) async {
+    try {
+      final whitelabelName = whitelabel ?? 'default';
+      final accessToken = await _oauth2Service.getAccessToken(whitelabel: whitelabelName);
+      final refreshToken = await _oauth2Service.getRefreshToken(whitelabel: whitelabelName);
+      final expirationStr = await _oauth2Service.getExpiration(whitelabel: whitelabelName);
+      
+      if (accessToken == null || refreshToken == null) {
+        return null;
+      }
+      
+      DateTime? expiration;
+      if (expirationStr != null && expirationStr.isNotEmpty) {
+        expiration = DateTime.parse(expirationStr);
+      }
+      
+      // Get token endpoint from config or use default
+      final config = await _oauth2Service.getOpenIDConfig();
+      final tokenEndpoint = config?.tokenEndpoint ?? 
+          'https://auth.floatplane.com/realms/floatplane/protocol/openid-connect/token';
+      
+      final credentials = oauth2.Credentials(
+        accessToken,
+        refreshToken: refreshToken,
+        tokenEndpoint: Uri.parse(tokenEndpoint),
+        expiration: expiration,
+      );
+      
+      // Create a custom HTTP client that includes cookies
+      final innerClient = _CookieHttpClient(cookieJar);
+      
+      final client = oauth2.Client(
+        credentials,
+        identifier: await _oauth2Service.getClientId(),
+        onCredentialsRefreshed: (newCredentials) async {
+          // Save refreshed tokens back to storage for this whitelabel
+          await _oauth2Service.storeTokens(
+            OAuth2Result.success(
+              accessToken: newCredentials.accessToken,
+              refreshToken: newCredentials.refreshToken,
+              expirationDateTime: newCredentials.expiration,
+            ),
+            whitelabel: whitelabelName,
+          );
+        },
+        httpClient: innerClient,
+      );
+      
+      return client;
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /// Remove OAuth2 client from cache (e.g., on logout)
+  void clearOAuth2Client(String whitelabel) {
+    if (_oauth2Clients.containsKey(whitelabel)) {
+        _oauth2Clients[whitelabel]?.close();
+      _oauth2Clients.remove(whitelabel);
+    }
   }
 
   Future<String> postData(
@@ -67,14 +205,21 @@ class FPApiRequests {
   ]) async {
     try {
       final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-      final response = await _dio.post(
-        '${whiteLabel.apiUrl}/$apiUrl',
-        data: body,
-        queryParameters: queryParams,
+      final client = await getHttpClient(whiteLabel.friendlyName);
+      
+      var url = Uri.parse('${whiteLabel.apiUrl}/$apiUrl');
+      if (queryParams != null && queryParams.isNotEmpty) {
+        url = url.replace(queryParameters: queryParams);
+      }
+      
+      final response = await client.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'User-Agent': userAgent},
+        body: body != null ? jsonEncode(body) : null,
       );
-      return response.data.toString();
-    } on DioException catch (e) {
-      return 'Error: ${e.response?.statusCode}, ${e.response?.data}';
+      return response.body;
+    } catch (e) {
+      return 'Error: $e';
     }
   }
 
@@ -85,13 +230,20 @@ class FPApiRequests {
   ]) async {
     try {
       final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-      final response = await _dio.get(
-        '${whiteLabel.apiUrl}/$apiUrl',
-        queryParameters: queryParams,
+      final client = await getHttpClient(whiteLabel.friendlyName);
+      
+      var url = Uri.parse('${whiteLabel.apiUrl}/$apiUrl');
+      if (queryParams != null && queryParams.isNotEmpty) {
+        url = url.replace(queryParameters: queryParams);
+      }
+      
+      final response = await client.get(
+        url,
+        headers: {'User-Agent': userAgent},
       );
-      return response.data;
-    } on DioException catch (e) {
-      return {'statusCode': e.response?.statusCode ?? 500, 'body': e.message};
+      return response.body;
+    } catch (e) {
+      return {'statusCode': 500, 'body': e.toString()};
     }
   }
 
@@ -150,6 +302,7 @@ class FPApiRequests {
                 subscription is Map<String, dynamic> &&
                 subscription['creator'] is String)
             .map((subscription) => subscription['creator'] as String)
+            .toSet() // Remove duplicates
             .toList();
         List<CreatorModelV3> creators = [];
         for (String id in creatorIds) {
@@ -415,7 +568,7 @@ class FPApiRequests {
   Future<Map<String, dynamic>> getUserInfo(String whitelabel) async {
     try {
       final userinfo = await fetchData(
-          'v3/status?platform=flutter&version=FloatyClient', whitelabel);
+          'v3/user/self', whitelabel);
       if (userinfo != null && userinfo.isNotEmpty) {
         dynamic userinfoJson = jsonDecode(userinfo);
         return userinfoJson;
@@ -694,107 +847,37 @@ class FPApiRequests {
     await postData('v3/content/progress/clear', whitelabel);
   }
 
-  Future<Map<String, dynamic>> captcha(String whitelabel) async {
-    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v3/auth/captcha/info';
-    final response = await _dio.get(
-      url,
-    );
-
-    final resData = jsonDecode(response.data);
-
-    return resData;
-  }
-
-// do not messsage me about this absolute garbage code please - bw86
-// back here like 3 months later because well it broke - bw86 - 20/01/2025
-// migration to dio and cookiejar because my manual system is ass - bw86 - 15/04/2025
-// guess whos back? this time we fix this garbage code once and for all - bw86 - 22/06/2025
-  Future<Map<String, dynamic>> login(
-      String username, String password, String whitelabel,
-      {bool optionalTwoFA = false}) async {
-    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v2/auth/login';
-
-    final response = await _dio.post(
-      url,
-      data: jsonEncode({
-        'username': username,
-        'password': password,
-      }),
-    );
-
-    final resData = jsonDecode(response.data);
-
-    if (response.statusCode == 200) {
-      if (resData['needs2FA'] == true) {
-        if (optionalTwoFA) {
-          await settings.setBool(
-              'optional-${whiteLabel.friendlyName}-2faRequired', true);
-        } else {
-          await settings.setBool(
-              '${whiteLabel.friendlyName}-2faRequired', true);
-        }
-      } else {
-        await whitelabels.addLoggedInLabel(
-            '${whiteLabel.friendlyName}-${resData['user']['id']}');
-      }
-    }
-
-    return resData;
-  }
-
-  Future<Map<String, dynamic>> twofa(String code, String whitelabel,
-      {bool optionalTwoFA = false}) async {
-    final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v2/auth/checkFor2faLogin';
-    final response = await _dio.post(
-      url,
-      data: jsonEncode({
-        'token': code,
-      }),
-    );
-
-    final resData = jsonDecode(response.data);
-
-    if (response.statusCode == 200 && resData['needs2FA'] == false) {
-      if (optionalTwoFA) {
-        await settings.setBool(
-            'optional-${whiteLabel.friendlyName}-2faRequired', false);
-      } else {
-        await settings.setBool("${whiteLabel.friendlyName}-2faRequired", false);
-      }
-      await whitelabels.addLoggedInLabel(
-          '${whiteLabel.friendlyName}-${resData['user']['id']}');
-    }
-    return resData;
-  }
-
   Future<String> logout(String whitelabel) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v2/auth/logout';
-    final response = await _dio.post(
+    final client = await getHttpClient(whiteLabel.friendlyName);
+    final url = Uri.parse('${whiteLabel.apiUrl}/v3/auth/logout');
+    final response = await client.post(
       url,
+      headers: {'User-Agent': userAgent},
     );
-    return response.data;
+    return response.body;
   }
 
   Future<Map<String, dynamic>> subscribe(
       String whitelabel, String creatorId) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v3/creator/subscribe?id=$creatorId';
-    final response = await _dio.post(
+    final client = await getHttpClient(whiteLabel.friendlyName);
+    final url = Uri.parse('${whiteLabel.apiUrl}/v3/creator/subscribe?id=$creatorId');
+    final response = await client.post(
       url,
+      headers: {'User-Agent': userAgent},
     );
-    return jsonDecode(response.data);
+    return jsonDecode(response.body);
   }
 
   Future<String> unsubscribe(String whitelabel, String creatorId) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
-    final url = '${whiteLabel.apiUrl}/v3/creator/unsubscribe?id=$creatorId';
-    final response = await _dio.post(
+    final client = await getHttpClient(whiteLabel.friendlyName);
+    final url = Uri.parse('${whiteLabel.apiUrl}/v3/creator/unsubscribe?id=$creatorId');
+    final response = await client.post(
       url,
+      headers: {'User-Agent': userAgent},
     );
-    return response.data;
+    return response.body;
   }
 }

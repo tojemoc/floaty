@@ -76,7 +76,7 @@ class FPWebsockets {
         {'connected': false, 'color': 'success', 'message': 'Disconnected'});
   }
 
-  joinLiveChatRoom(
+  void joinLiveChatRoom(
       String id, Function(Map<String, dynamic>) messagesHandler) async {
     liveid = id;
     io.get(
@@ -89,7 +89,7 @@ class FPWebsockets {
     );
   }
 
-  sendChatMessage(String id, String message,
+  void sendChatMessage(String id, String message,
       Function(Map<String, dynamic>) messagesHandler) async {
     io.post(
         url: '/RadioMessage/sendLivestreamRadioChatter',
@@ -100,7 +100,7 @@ class FPWebsockets {
         });
   }
 
-  getChatUserList(
+  void getChatUserList(
       String id, Function(Map<String, dynamic>) messagesHandler) async {
     io.get(
       url: '/RadioMessage/getChatUserList',

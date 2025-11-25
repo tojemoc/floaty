@@ -1,13 +1,12 @@
 import 'dart:io';
-
 import 'package:floaty/features/post/components/blog_post_card.dart';
 import 'package:floaty/features/post/components/comment_holder.dart';
 import 'package:floaty/features/post/components/expandable_description.dart';
 import 'package:floaty/features/post/components/state_card.dart';
-
 import 'package:floaty/shared/views/error_screen.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/post/repositories/post_provider.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
@@ -29,16 +28,15 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:floaty/features/api/repositories/download_manager.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-
 enum ScreenLayout { small, medium, wide }
-
 class VideoDetailPage extends ConsumerStatefulWidget {
-  const VideoDetailPage({super.key, required this.postId});
+  const VideoDetailPage({super.key, required this.postId, this.t, this.a});
   final String postId;
+  final int? t;
+  final String? a;
   @override
   ConsumerState<VideoDetailPage> createState() => _VideoDetailPageState();
 }
-
 class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   late String postId;
   late MediaPlayerService _mediaService;
@@ -52,6 +50,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   String sortBy = 'createdAt';
   String sortOrder = 'DESC';
   String? _selectedAttachmentId;
+  dynamic selectedAttachment;
   bool text = false;
   bool isWan = false;
   String letsBeHonestItsLateTime = '';
@@ -66,18 +65,15 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   late MediaPlayerService mediaService;
   late MediaPlayerState mediaState;
   late List<PopupMenuEntry<String>> menuItems;
-
   final List<CommentModel> _comments = [];
   bool _isLoadingComments = false;
   bool _hasMoreComments = true;
   String userAgent = 'FloatyClient/error, CFNetwork';
   PackageInfo? packageInfo;
-
   @override
   void initState() {
     super.initState();
     initUserAgent();
-
     postId = widget.postId;
     _mediaContentFuture = Future(() async {
       // Wait for post to be loaded
@@ -92,12 +88,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       }
       return _buildMediaContent();
     });
-
     _commentController.addListener(_updateCharCount);
-
     _loadComments();
   }
-
   Future<void> initUserAgent() async {
     packageInfo = await PackageInfo.fromPlatform();
     const flavor =
@@ -105,60 +98,83 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     userAgent =
         'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
   }
-
   //whenplane intergration
   //100% not converted from the browser extension
   String? extractShowDate(String title) {
     final titleRegex = RegExp(
         r" - WAN Show ((January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4})");
     final match = titleRegex.firstMatch(title);
-
     if (match != null) {
       String dateString =
           match.group(1)!; // Extracted date as "February 14, 2025"
-
       // Parse into DateTime object
       DateTime parsedDate = DateFormat("MMMM d, yyyy").parse(dateString);
-
       // Convert to YYYY/MM/DD format
       return DateFormat("yyyy/MM/dd").format(parsedDate);
     }
-
     return null;
   }
-
   String formatDate(String rawDate) {
     final date = DateTime.parse(rawDate);
     return "${date.year}/${addZero(date.month)}/${addZero(date.day)}";
   }
-
   String addZero(int n) => n > 9 ? "$n" : "0$n";
-
   String convertTimeFormat(String date1, String date2, bool length) {
     DateTime start = DateTime.parse(date1).toUtc();
     DateTime end = DateTime.parse(date2).toUtc();
-
     if (length) {
       return formatDuration(end.difference(start));
     } else {
       return "${formatTime(start)} - ${formatTime(end)}";
     }
   }
-
   String formatTime(DateTime date) {
     return "${addZero(date.hour)}:${addZero(date.minute)}";
   }
-
   String formatDuration(Duration duration) {
-    return [
-      if (duration.inHours > 0) "${duration.inHours}h",
-      if (duration.inMinutes.remainder(60) > 0)
-        "${duration.inMinutes.remainder(60)}m",
-      if (duration.inSeconds.remainder(60) > 0)
-        "${duration.inSeconds.remainder(60)}s"
-    ].join(" ");
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$hours:$minutes:$seconds';
   }
-
+  // Parse timestamp from HH:MM:SS, MM:SS, or seconds
+  int _parseTimestamp(String input) {
+    // Try to parse as HH:MM:SS or MM:SS
+    final parts = input.split(':');
+    if (parts.length >= 2) {
+      try {
+        if (parts.length == 3) {
+          // HH:MM:SS format
+          final hours = int.parse(parts[0]);
+          final minutes = int.parse(parts[1]);
+          final seconds = double.parse(parts[2]).toInt();
+          return hours * 3600 + minutes * 60 + seconds;
+        } else if (parts.length == 2) {
+          // MM:SS format
+          final minutes = int.parse(parts[0]);
+          final seconds = double.parse(parts[1]).toInt();
+          return minutes * 60 + seconds;
+        }
+      } catch (e) {
+        // If parsing fails, try parsing as raw seconds
+      }
+    }
+    // Try parsing as raw seconds
+    return int.tryParse(input) ?? 0;
+  }
+  // Format seconds into HH:MM:SS or MM:SS for display
+  String _formatTimestampForInput(int seconds) {
+    final duration = Duration(seconds: seconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final secs = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    } else {
+      return '$minutes:${secs.toString().padLeft(2, '0')}';
+    }
+  }
   @override
   void dispose() {
     Future.microtask(() async {
@@ -167,7 +183,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         mediaService.changeState(MediaPlayerState.mini);
       }
     });
-
     Future.microtask(() async {
       if (selectedMediaType == MediaType.video ||
           selectedMediaType == MediaType.audio) {
@@ -185,7 +200,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     _attachmentScrollController.dispose();
     super.dispose();
   }
-
   @override
   void didUpdateWidget(VideoDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -198,13 +212,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       });
     }
   }
-
   void _updateCharCount() {
     setState(() {
       _currentLength = _commentController.text.length;
     });
   }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -212,109 +224,107 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     _mediaService = ref.watch(mediaPlayerServiceProvider.notifier);
     final postState = ref.watch(postProvider(widget.postId));
     menuItems = ref.watch(menuItemsProvider);
-
     if (!Platform.isAndroid && !Platform.isIOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        while (!postState.isLoading) {
-          if (postState.post?.creator?.title?.toLowerCase() == 'eccsquad' &&
-                  await settings.getBool('discord_rpc') == false &&
-                  await settings.getBool('eccsquadwarningseen') == false ||
-              postState.post?.creator?.title?.toLowerCase() == 'ecc squad' &&
-                  await settings.getBool('discord_rpc') == false &&
-                  await settings.getBool('eccsquadwarningseen') == false) {
-            context.pushReplacement('/ecc-warning/${widget.postId}');
-          } else if (postState.post?.creator?.discoverable == false) {
-            context.pushReplacement('/ecc-warning/${widget.postId}',
-                extra: 'discoverable');
-          }
-          break;
-        }
+        // while (!postState.isLoading) {
+        //   if (postState.post?.creator?.title?.toLowerCase() == 'eccsquad' &&
+        //           await settings.getBool('discord_rpc') == false &&
+        //           await settings.getBool('eccsquadwarningseen') == false ||
+        //       postState.post?.creator?.title?.toLowerCase() == 'ecc squad' &&
+        //           await settings.getBool('discord_rpc') == false &&
+        //           await settings.getBool('eccsquadwarningseen') == false) {
+        //     context.pushReplacement('/ecc-warning/${widget.postId}');
+        //   } else if (postState.post?.creator?.discoverable == false) {
+        //     context.pushReplacement('/ecc-warning/${widget.postId}',
+        //         extra: 'discoverable');
+        //   }
+        //   break;
+        // }
       });
     }
-
     return postState.isLoading
         ? const Center(child: CircularProgressIndicator())
         : Scaffold(
             body: RefreshIndicator(
-            onRefresh: () async {
-              _loadComments();
-            },
-            child: SingleChildScrollView(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth > 1000;
-                  final isMedium = constraints.maxWidth > 700 &&
-                      constraints.maxWidth <= 1000;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: text == false ? double.infinity : 0,
-                        height: text == false
-                            ? min(
-                                constraints.maxWidth * 9 / 16,
-                                MediaQuery.of(context).size.height - 250,
-                              )
-                            : 0,
-                        decoration: BoxDecoration(
-                          color: Colors.black,
+              onRefresh: () async {
+                _loadComments();
+              },
+              child: SingleChildScrollView(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 1000;
+                    final isMedium = constraints.maxWidth > 700 &&
+                        constraints.maxWidth <= 1000;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: text == false ? double.infinity : 0,
+                          height: text == false
+                              ? min(
+                                  constraints.maxWidth * 9 / 16,
+                                  MediaQuery.of(context).size.height - 250,
+                                )
+                              : 0,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                          ),
+                          child: FutureBuilder<Widget>(
+                            future: _mediaContentFuture,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                    child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                ));
+                              } else if (snapshot.hasError) {
+                                return Center(
+                                    child: Text('Error: ${snapshot.error}'));
+                              } else {
+                                return snapshot.data!;
+                              }
+                            },
+                          ),
                         ),
-                        child: FutureBuilder<Widget>(
-                          future: _mediaContentFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const Center(
-                                  child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ));
-                            } else if (snapshot.hasError) {
-                              return Center(
-                                  child: Text('Error: ${snapshot.error}'));
-                            } else {
-                              return snapshot.data!;
-                            }
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: isWide
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: _buildMainContent(
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: isWide
+                              ? Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: _buildMainContent(
+                                          constraints, theme, colorScheme),
+                                    ),
+                                    const SizedBox(width: 24),
+                                    _buildRecommendedSection(constraints,
+                                        layout: ScreenLayout.wide),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildMainContent(
                                         constraints, theme, colorScheme),
-                                  ),
-                                  const SizedBox(width: 24),
-                                  _buildRecommendedSection(constraints,
-                                      layout: ScreenLayout.wide),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildMainContent(
-                                      constraints, theme, colorScheme),
-                                  _buildRecommendedSection(
-                                    constraints,
-                                    layout: isMedium
-                                        ? ScreenLayout.medium
-                                        : ScreenLayout.small,
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ],
-                  );
-                },
+                                    _buildRecommendedSection(
+                                      constraints,
+                                      layout: isMedium
+                                          ? ScreenLayout.medium
+                                          : ScreenLayout.small,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
-          ));
+          );
   }
-
   Future<Widget> _buildMediaContent() async {
     mediaService = ref.read(mediaPlayerServiceProvider.notifier);
     mediaState = ref.read(mediaPlayerServiceProvider);
@@ -325,21 +335,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       if (post == null) {
         return const Center(child: CircularProgressIndicator());
       }
-
       int progress = 0;
-
       // If no attachments, show no content
       if (post.attachmentOrder.isEmpty) {
         text = true;
         return const SizedBox.shrink();
       }
-
       // If no attachment found, default to first
-      _selectedAttachmentId ??= post.attachmentOrder.first;
-
-      // Find the selected attachment
-      dynamic selectedAttachment;
-
+      if (widget.a != null) {
+        _selectedAttachmentId = widget.a;
+      } else {
+        _selectedAttachmentId ??= post.attachmentOrder.first;
+      }
       // Search through video attachments
       for (final video
           in ref.read(postProvider(widget.postId)).post!.videoAttachments) {
@@ -349,7 +356,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           break;
         }
       }
-
       // If not found, search through audio attachments
       if (selectedAttachment == null) {
         for (final audio
@@ -361,7 +367,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         }
       }
-
       // If not found, search through picture attachments
       if (selectedAttachment == null) {
         for (final picture
@@ -373,7 +378,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         }
       }
-
       // Determine media URL based on attachment type
       List<VideoQuality>? qualities;
       if (selectedAttachment != null) {
@@ -384,7 +388,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               _selectedAttachmentId!);
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, true);
-
           final prores = await fpApiRequests.getContent(
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
               'video',
@@ -393,11 +396,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           if (decodedpro['progress'] != null) {
             progress = decodedpro['progress'];
           }
-
           textTrack = (decodedpro['textTracks'] as List?)
                   ?.cast<Map<String, dynamic>>() ??
               [];
-
           // Determine the default quality using the Settings class
           String? preferredQuality = await settings.getKey('preferred_quality');
           if (preferredQuality.isNotEmpty) {
@@ -422,7 +423,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               _selectedAttachmentId!);
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, false);
-
           final prores = await fpApiRequests.getContent(
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
               'audio',
@@ -430,12 +430,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           final decodedpro = jsonDecode(prores);
           if (decodedpro['progress'] != null) {
             progress = decodedpro['progress'];
-
             textTrack = (decodedpro['textTracks'] as List?)
                     ?.cast<Map<String, dynamic>>() ??
                 [];
           }
-
           // Determine the default quality using the Settings class
           String? preferredQuality = await settings.getKey('preferred_quality');
           if (preferredQuality.isNotEmpty) {
@@ -462,132 +460,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           mediaUrl = decoded['imageFiles'][0]['path'];
         }
       }
-
-      // If multiple attachments, add navigation
-      if (ref.read(postProvider(widget.postId)).post!.attachmentOrder.length >
-          1) {
-        return Stack(
-          children: [
-            if (context.mounted)
-              MediaPlayerWidget(
-                whitelabelName:
-                    (await whitelabels.getSelectedWhitelabel()).friendlyName,
-                //welcome to making dart shut up
-                contextBuild: context.mounted ? context : context,
-                mediaUrl: mediaUrl!,
-                mediaType: selectedMediaType,
-                attachment: selectedAttachment,
-                qualities:
-                    selectedMediaType == MediaType.image ? null : qualities,
-                initialState: MediaPlayerState.main,
-                startFrom: progress,
-                textTracks: textTrack.isEmpty ? null : textTrack,
-                live: false,
-                discoverable: ref
-                        .read(postProvider(widget.postId))
-                        .post
-                        ?.creator
-                        ?.discoverable ??
-                    false,
-                title: ref.read(postProvider(widget.postId)).post?.title ??
-                    'Unknown Title',
-                artist: ref
-                        .read(postProvider(widget.postId))
-                        .post
-                        ?.channel
-                        ?.title ??
-                    'Unknown Creator',
-                artistImage: ref
-                        .read(postProvider(widget.postId))
-                        .post
-                        ?.channel
-                        ?.icon
-                        ?.path ??
-                    '',
-                postId: widget.postId,
-                artworkUrl: ref
-                        .read(postProvider(widget.postId))
-                        .post!
-                        .thumbnail
-                        ?.path ??
-                    '',
-              ),
-            // Left navigation arrow
-            Positioned(
-              left: 16,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: IconButton(
-                  icon: const Icon(Icons.chevron_left,
-                      color: Colors.white, size: 32),
-                  onPressed: () {
-                    final currentIndex = ref
-                        .read(postProvider(widget.postId))
-                        .post!
-                        .attachmentOrder
-                        .indexOf(_selectedAttachmentId!);
-                    final prevIndex = (currentIndex -
-                            1 +
-                            ref
-                                .read(postProvider(widget.postId))
-                                .post!
-                                .attachmentOrder
-                                .length) %
-                        ref
-                            .read(postProvider(widget.postId))
-                            .post!
-                            .attachmentOrder
-                            .length;
-                    setState(() {
-                      _selectedAttachmentId = ref
-                          .read(postProvider(widget.postId))
-                          .post!
-                          .attachmentOrder[prevIndex];
-                      _mediaContentFuture =
-                          _buildMediaContent(); // Rebuild media content
-                    });
-                  },
-                ),
-              ),
-            ),
-            // Right navigation arrow
-            Positioned(
-              right: 16,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: IconButton(
-                  icon: const Icon(Icons.chevron_right,
-                      color: Colors.white, size: 32),
-                  onPressed: () {
-                    final currentIndex = ref
-                        .read(postProvider(widget.postId))
-                        .post!
-                        .attachmentOrder
-                        .indexOf(_selectedAttachmentId!);
-                    final nextIndex = (currentIndex + 1) %
-                        ref
-                            .read(postProvider(widget.postId))
-                            .post!
-                            .attachmentOrder
-                            .length;
-                    setState(() {
-                      _selectedAttachmentId = ref
-                          .read(postProvider(widget.postId))
-                          .post!
-                          .attachmentOrder[nextIndex];
-                      _mediaContentFuture =
-                          _buildMediaContent(); // Rebuild media content
-                    });
-                  },
-                ),
-              ),
-            ),
-          ],
-        );
-      }
-
       // If only one attachment
       return MediaPlayerWidget(
         whitelabelName:
@@ -605,7 +477,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 ? qualities
                 : null,
         initialState: MediaPlayerState.main,
-        startFrom: progress,
+        startFrom: widget.t ?? progress,
         textTracks: textTrack.isEmpty ? null : textTrack,
         title: ref.read(postProvider(widget.postId)).post?.title ??
             'Unknown Title',
@@ -617,6 +489,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         postId: widget.postId,
         artworkUrl:
             ref.read(postProvider(widget.postId)).post!.thumbnail?.path ?? '',
+        timelineSprite: post.videoAttachments
+            .where((attachment) => attachment.id == _selectedAttachmentId)
+            .firstOrNull
+            ?.timelineSprite,
       );
     } catch (e) {
       return const Center(
@@ -625,16 +501,13 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ));
     }
   }
-
   Future<List<VideoQuality>> fetchVideoQualities(
       Map<String, dynamic> deliveryResponse, bool video,
       {bool v2 = false}) async {
     List<VideoQuality> qualities = [];
-
     if (!v2) {
       // Extract base URL from origins
       String baseUrl = deliveryResponse['groups'][0]['origins'][0]['url'];
-
       // Access the groups and their variants
       for (var group in deliveryResponse['groups']) {
         for (var variant in group['variants']) {
@@ -659,22 +532,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     } else {
       // Extract base URL from origins
       String baseUrl = deliveryResponse['cdn'];
-
       // Access the groups and their variants
       for (var quality in deliveryResponse['resource']['data']
           ['qualityLevels']) {
         final qualityName = quality['name'];
         final qualityParams = deliveryResponse['resource']['data']
             ['qualityLevelParams'][qualityName];
-
         if (qualityParams != null) {
           final pathParam = qualityParams['2'];
           final token = qualityParams['4'];
-
           final uri = deliveryResponse['resource']['uri']
               .replaceAll('{qualityLevelParams.2}', pathParam)
               .replaceAll('{qualityLevelParams.4}', token);
-
           qualities.add(VideoQuality(
             url: '$baseUrl$uri',
             label: quality['label'],
@@ -682,10 +551,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         }
       }
     }
-
     return qualities;
   }
-
   String _getSortDisplayText() {
     if (sortBy == 'createdAt' && sortOrder == 'DESC') {
       return 'newest';
@@ -699,33 +566,28 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return 'newest';
     }
   }
-
 // here you see wasted time because floatplane download api v3 doesnt actually work even if
 // you fix the urls not matching because the token v3 generates is invalid
-
   // String convertV3ToV2(String v3Url) {  //   Uri uri = Uri.parse(v3Url);
   //   String? token = uri.queryParameters['token'];
   //   String? expires = uri.queryParameters['expires'];
   //   String basePath =
   //       uri.pathSegments.take(uri.pathSegments.length - 1).join('/');
-  //   String fileName = uri.pathSegments[uri.pathSegments.length - 2];
+  //   String fileName = uri.pathSegments[uri.pathSegments.length - 2];`
   //   String v2Url =
   //       '${uri.scheme}://${uri.host}/$basePath/$fileName.mp4?token=$token&expires=$expires';
   //   return v2Url;
   // }
-
   List<Widget> _buildInteractionButtons(
       ThemeData theme, ColorScheme colorScheme) {
     final postState = ref.watch(postProvider(widget.postId));
     final post = postState.post;
     final downloadNotifier = ref.read(downloadOptionsProvider.notifier);
-
     // Show download button if there's a media attachment
     final hasMediaAttachment = post != null &&
         (post.videoAttachments.isNotEmpty ||
             post.audioAttachments.isNotEmpty ||
             post.pictureAttachments.isNotEmpty);
-
     Future<void> showDownloadDialog() async {
       downloadNotifier.reset();
       if (selectedMediaType == MediaType.image) {
@@ -738,26 +600,21 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             (await whitelabels.getSelectedWhitelabel()).friendlyName,
             'download',
             _selectedAttachmentId ?? '');
-
         if (data != 'Response StatusCode: 429, Body: error code: 1015') {
           final dedata = jsonDecode(data);
           final options = <DownloadOption>[];
           String baseUrl = dedata['cdn'];
-
           for (var quality in dedata['resource']['data']['qualityLevels']) {
             String qualityName = quality['name'];
             String qualityLabel = quality['label'];
-
             String videoFile = dedata['resource']['data']['qualityLevelParams']
                 [qualityName]['1'];
             String token = dedata['resource']['data']['qualityLevelParams']
                 [qualityName]['2'];
-
             String resourceUri = dedata['resource']['uri']
                 .replaceFirst('{qualityLevelParams.1}', videoFile)
                 .replaceFirst('{qualityLevelParams.2}', token);
             String curl = '$baseUrl$resourceUri';
-
             options.add(DownloadOption(url: curl, label: qualityLabel));
           }
           downloadNotifier.setOptions(options);
@@ -765,9 +622,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           downloadNotifier.setError('Rate limit exceeded');
         }
       }
-
       if (!mounted) return;
-
       await showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -777,18 +632,15 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             child: Consumer(
               builder: (context, ref, _) {
                 final state = ref.watch(downloadOptionsProvider);
-
                 if (state.isLoading) {
                   return const SizedBox(
                     height: 100,
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
-
                 if (state.error != null) {
                   return ErrorScreen(message: state.error!);
                 }
-
                 return SizedBox(
                   height: 200,
                   child: ListView.builder(
@@ -800,7 +652,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                         title: Text(option.label),
                         onTap: () async {
                           Navigator.of(context).maybePop();
-
                           // Check permissions before starting download
                           final hasPermissions = await DownloadManager()
                               .checkAndRequestPermissions();
@@ -814,7 +665,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                             }
                             return;
                           }
-
                           final task = DownloadTask(
                             url: option.url,
                             filename:
@@ -826,33 +676,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               'User-Agent': userAgent,
                             },
                           );
-
                           try {
                             await FileDownloader().enqueue(task);
-                            FileDownloader().updates.listen((update) async {
-                            switch (update) {
-                              case TaskStatusUpdate():
-                                // process the TaskStatusUpdate, e.g.
-                                switch (update.status) {
-                                  case TaskStatus.complete: {
-                                    print('Task ${update.task.taskId} success!');
-                                    await DownloadManager().moveToDownloads(task);
-                                  }
-                                  case TaskStatus.canceled:
-                                    print('Download was canceled');
-
-                                  case TaskStatus.paused:
-                                    print('Download was paused');
-
-                                  default:
-                                    print('Download not successful');
-                                }
-
-                              case TaskProgressUpdate():
-                                // process the TaskProgressUpdate, e.g.
-                                print(update);
-                            }
-                          });
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -861,6 +686,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               );
                             }
                             // Move file to downloads after completion
+                            await DownloadManager().moveToDownloads(task);
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -886,14 +712,129 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       );
     }
-
+    Future<void> showShareDialog() async {
+      final mediaService = ref.read(mediaPlayerServiceProvider.notifier);
+      mediaService.pause();
+      final String postId = widget.postId;
+      final String attachmentId = _selectedAttachmentId ?? '';
+      final WhiteLabel whiteLabel = await whitelabels.getSelectedWhitelabel();
+      final timestampController = TextEditingController(
+        text: _formatTimestampForInput(mediaService.currentPosition.inSeconds),
+      );
+      // Initialize the base URL
+      String shareUrl =
+          'https://www.${whiteLabel.domain}/post/$postId?a=$attachmentId';
+      bool includeTimestamp = false; // Reset the timestamp flag
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Share Options'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SelectableText(
+                          shareUrl,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Include Timestamp'),
+                        Switch(
+                          value: includeTimestamp,
+                          onChanged: (value) {
+                            setState(() {
+                              includeTimestamp = value;
+                              shareUrl =
+                                  'https://www.${whiteLabel.domain}/post/$postId?a=$attachmentId';
+                              if (includeTimestamp) {
+                                final timestamp =
+                                    mediaService.currentPosition.inSeconds;
+                                shareUrl += '&t=$timestamp';
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    if (includeTimestamp) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              decoration: InputDecoration(
+                                labelText: 'Timestamp (HH:MM:SS or seconds)',
+                                hintText: 'e.g., 1:23 or 83',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                              ),
+                              controller: timestampController,
+                              onChanged: (value) {
+                                if (value.isNotEmpty) {
+                                  final timestamp = _parseTimestamp(value);
+                                  setState(() {
+                                    shareUrl =
+                                        'https://www.${whiteLabel.domain}/post/$postId?a=$attachmentId&t=$timestamp';
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ]
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: shareUrl));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Link copied to clipboard')),
+                        );
+                      }
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Copy Link'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    }
     return [
-      if (hasMediaAttachment)
+      IconButton(
+        icon: const Icon(Icons.share),
+        onPressed: showShareDialog,
+      ),
+      const SizedBox(width: 5),
+      if (hasMediaAttachment) ...[
         IconButton(
           icon: const Icon(Icons.download),
           onPressed: showDownloadDialog,
         ),
-      const SizedBox(width: 5),
+        const SizedBox(width: 5),
+      ],
       TextButton.icon(
         style: TextButton.styleFrom(
           splashFactory: InkRipple.splashFactory,
@@ -954,20 +895,37 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ),
     ];
   }
-
   Widget _buildMainContent(
       BoxConstraints constraints, ThemeData theme, ColorScheme colorScheme) {
     final postState = ref.watch(postProvider(widget.postId));
     final post = postState.post;
     if (post == null) return const SizedBox.shrink();
-
     Future(() => rootLayoutKey.currentState?.setAppBar(Text(post.title ?? '')));
-
     final isSmall = constraints.maxWidth <= 700;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
+        if (selectedAttachment != null &&
+            selectedAttachment.isProcessing is bool &&
+            selectedAttachment.isProcessing)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: double.infinity,
+                color: colorScheme.surfaceContainerHigh,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('This content is still processing',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      )),
+                ),
+              ),
+            ),
+          ),
         if (isSmall)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1109,7 +1067,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                         ...List.generate(post.attachmentOrder.length, (index) {
                           final id = post.attachmentOrder[index];
                           Widget? attachmentWidget;
-
                           // Find the attachment by ID
                           for (final video in post.videoAttachments) {
                             if (video.id == id) {
@@ -1138,7 +1095,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               break;
                             }
                           }
-
                           for (final audio in post.audioAttachments) {
                             if (audio.id == id) {
                               attachmentWidget = StateCard(
@@ -1172,7 +1128,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               break;
                             }
                           }
-
                           for (final picture in post.pictureAttachments) {
                             if (picture.id == id) {
                               attachmentWidget = StateCard(
@@ -1200,7 +1155,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               break;
                             }
                           }
-
                           for (final gallery in post.galleryAttachments) {
                             if (gallery.id == id) {
                               attachmentWidget = StateCard(
@@ -1228,11 +1182,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               break;
                             }
                           }
-
                           if (attachmentWidget == null) {
                             return const SizedBox.shrink();
                           }
-
                           return Padding(
                             padding: EdgeInsets.only(
                               right: index == post.attachmentOrder.length - 1
@@ -1382,9 +1334,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                       child: Row(
                         children: [
                           Text(
-                            '$_currentLength/1500',
+                            '$_currentLength/4500',
                             style: TextStyle(
-                              color: _currentLength > 1500
+                              color: _currentLength > 4500
                                   ? Colors.red
                                   : Colors.grey[400],
                               fontWeight: FontWeight.bold,
@@ -1413,7 +1365,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                           const SizedBox(width: 8),
                           TextButton(
                             onPressed: _currentLength >= 3 &&
-                                    _currentLength <= 1500
+                                    _currentLength <= 4500
                                 ? () async {
                                     final text = _commentController.text;
                                     _commentController.clear();
@@ -1438,7 +1390,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               'COMMENT',
                               style: TextStyle(
                                 color: _currentLength >= 3 &&
-                                        _currentLength <= 1500
+                                        _currentLength <= 4500
                                     ? Colors.white
                                     : Colors.grey[600],
                                 fontWeight: FontWeight.bold,
@@ -1573,7 +1525,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                               );
                             }
                             if (!mounted) return;
-
                             setState(() {
                               _comments.addAll(items);
                               _hasMoreComments = items.length >= _pageSize;
@@ -1614,7 +1565,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ],
     );
   }
-
   Future<void> _loadComments() async {
     setState(() {
       _comments.clear();
@@ -1642,7 +1592,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         );
       }
       if (!mounted) return;
-
       setState(() {
         _comments.addAll(items);
         _hasMoreComments = items.length >= _pageSize;
@@ -1660,12 +1609,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       }
     }
   }
-
   Widget _buildRecommendedSection(BoxConstraints constraints,
       {required ScreenLayout layout}) {
     final width = layout == ScreenLayout.wide ? 300.0 : constraints.maxWidth;
     final padding = constraints.maxWidth <= 450 ? 4.0 : 2.0;
-
     return SizedBox(
       width: width,
       child: Column(
@@ -1703,7 +1650,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 }
-
 class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {
   @override
   void parse(BuildTree tree) {
@@ -1719,21 +1665,18 @@ class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {
               !prop.trim().toLowerCase().startsWith('border-color:'))
           .join(';')
           .trim();
-
       if (newStyle.isEmpty) {
         element.attributes.remove('style');
       } else {
         element.attributes['style'] = newStyle;
       }
     }
-
     // Process any inline styles in the HTML
     if (element.attributes.containsKey('color') ||
         element.attributes.containsKey('bgcolor')) {
       element.attributes.remove('color');
       element.attributes.remove('bgcolor');
     }
-
     super.parse(tree);
   }
 }

@@ -1,122 +1,173 @@
-import 'dart:io';
-
+import 'package:floaty/features/authentication/services/oauth2_service.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/whitelabels.dart';
+import 'package:floaty/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:floaty/shared/components/switcher.dart';
 import 'package:flutter/services.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 
 class LoginManager {
-  Future login(String username, String password, BuildContext context,
-      Function needstwofa, Function logincomplete,
-      {WhiteLabel? whitelabel, bool optionalTwoFA = false}) async {
-    ColorScheme colorScheme = Theme.of(context).colorScheme;
-    TextTheme textTheme = Theme.of(context).textTheme;
-    Map<String, dynamic> response;
-    WhiteLabel whiteLabel;
-    if (whitelabel == null) {
-      whiteLabel = await whitelabels.getSelectedWhitelabel();
-    } else {
-      whiteLabel = whitelabel;
-    }
-    if (username.isNotEmpty || password.isNotEmpty) {
-      response = await fpApiRequests.login(
-          username, password, whiteLabel.friendlyName,
-          optionalTwoFA: optionalTwoFA);
-    } else {
+  final OAuth2Service _oauth2Service = OAuth2Service();
+
+  /// Manual cookie login for testing
+  Future<void> loginWithCookie(BuildContext context, String cookieString,
+      Function logincomplete) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    try {
+      if (cookieString.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Please enter a cookie.', style: textTheme.bodyLarge),
+              backgroundColor: colorScheme.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Store the cookie in the cookie jar
+      final whiteLabel = await whitelabels.getSelectedWhitelabel();
+      final uri = Uri.parse('https://${whiteLabel.domain}/');
+    
+      
+      // Create cookie with far-future expiration (1 year from now)
+      // Use the actual domain from the whitelabel (not the URI domain)
+      // For multi-subdomain support, we could use .floatplane.com, but for now use exact domain
+      final cookie = Cookie(whiteLabel.cookieName, cookieString)
+        ..expires = DateTime.now().add(const Duration(days: 365))
+        ..domain = whiteLabel.domain  // Use the exact domain from whitelabel
+        ..path = '/'
+        ..httpOnly = true;
+      
+      // Save cookie to the domain's URI
+      await fpApiRequests.cookieJar.saveFromResponse(
+        uri,
+        [cookie],
+      );
+
+      // Mark this whitelabel as using cookie auth
+      await settings.setKey('${whiteLabel.friendlyName}_auth_method', 'cookie');
+
+      await whitelabels.addLoggedInLabel(
+            '${whiteLabel.friendlyName}-aaaaaaaaaa');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cookie saved successfully!', style: textTheme.bodyLarge),
+            backgroundColor: colorScheme.surfaceContainer,
+          ),
+        );
+      }
+
+      logincomplete();
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             showCloseIcon: true,
             closeIconColor: Colors.white,
-            content: Center(
-                child: Text('Please enter both Password and username.',
-                    style: textTheme.bodyLarge)),
-            backgroundColor: colorScheme.surfaceContainer,
+            content: Text('Cookie error: $e', style: textTheme.bodyLarge),
+            backgroundColor: colorScheme.error,
           ),
         );
-        return;
-      }
-      return;
-    }
-    if (response['needs2FA'] == true) {
-      needstwofa();
-      return;
-    }
-    if (response.containsKey('message')) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            showCloseIcon: true,
-            closeIconColor: Colors.white,
-            content: Center(
-                child: Text(response['message'], style: textTheme.bodyLarge)),
-            backgroundColor: colorScheme.surfaceContainer,
-          ),
-        );
-        return;
       }
     }
-    logincomplete();
-    return;
   }
 
-  Future twofa(String code, WhiteLabel labelthatneeds2fa, BuildContext context,
-      Function twofacomplete,
-      {bool optionalTwoFA = false}) async {
-    ColorScheme colorScheme = Theme.of(context).colorScheme;
-    TextTheme textTheme = Theme.of(context).textTheme;
-    Map<String, dynamic> response;
-    if (code.isNotEmpty) {
-      response = await fpApiRequests.twofa(code, labelthatneeds2fa.friendlyName,
-          optionalTwoFA: optionalTwoFA);
-    } else {
+  /// OAuth2 login flow
+  Future<void> loginWithOAuth2(BuildContext context, 
+      Function logincomplete) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    try {
+      // Show loading indicator
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            showCloseIcon: true,
-            closeIconColor: Colors.white,
-            content: Center(
-                child:
-                    Text('Please enter 2fa code.', style: textTheme.bodyLarge)),
+            duration: const Duration(seconds: 30),
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 16),
+                Text('Opening browser for authentication...', 
+                     style: textTheme.bodyLarge),
+              ],
+            ),
             backgroundColor: colorScheme.surfaceContainer,
           ),
         );
       }
-      return;
-    }
-    if (response.containsKey('message')) {
+
+      final result = await _oauth2Service.login();
+
+      // Clear loading indicator
       if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
+
+      if (result.isSuccess && result.accessToken != null) {
+        
+        // Get whitelabel info
+        final whiteLabel = await whitelabels.getSelectedWhitelabel();
+        
+        // Store tokens with whitelabel
+        await _oauth2Service.storeTokens(result, whitelabel: whiteLabel.friendlyName);
+        
+        // Mark as logged in
+        final userId = result.userInfo?['sub'] ?? 'oauth2_user';
+        await whitelabels.addLoggedInLabel('${whiteLabel.friendlyName}-$userId');
+        
+        logincomplete();
+      } else if (result.isCancelled) {
+        // User cancelled authentication
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Authentication was cancelled.', 
+                          style: textTheme.bodyLarge),
+              backgroundColor: colorScheme.surfaceContainer,
+            ),
+          );
+        }
+      } else {
+        // Authentication failed
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              showCloseIcon: true,
+              closeIconColor: Colors.white,
+              content: Text(result.error ?? 'OAuth2 authentication failed.', 
+                          style: textTheme.bodyLarge),
+              backgroundColor: colorScheme.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Clear loading indicator
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             showCloseIcon: true,
             closeIconColor: Colors.white,
-            content: Center(
-                child: Text(response['message'], style: textTheme.bodyLarge)),
-            backgroundColor: colorScheme.surfaceContainer,
+            content: Text('Authentication error: $e', style: textTheme.bodyLarge),
+            backgroundColor: colorScheme.error,
           ),
         );
-        return;
       }
     }
-    if (response['needs2FA'] == true) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            showCloseIcon: true,
-            closeIconColor: Colors.white,
-            content: Center(
-                child: Text('An Unknown Error has occured. Please try again.',
-                    style: textTheme.bodyLarge)),
-            backgroundColor: colorScheme.surfaceContainer,
-          ),
-        );
-        return;
-      }
-    }
-    twofacomplete();
-    return;
   }
 }
 
@@ -128,33 +179,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  bool turnstileLoaded = false;
+  final TextEditingController _cookieController = TextEditingController();
+  bool _showCookieInput = false;
   String? sitekey;
   String? token;
-
-  @override
-  void initState() {
-    super.initState();
-    init();
-  }
-
-  Future<void> init() async {
-    if (!Platform.isLinux) {
-      final captchaResponse = await fpApiRequests
-          .captcha((await whitelabels.getSelectedWhitelabel()).friendlyName);
-      sitekey = captchaResponse['turnstile']['variants']['managed']['siteKey'];
-      setState(() {
-        turnstileLoaded = true;
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    // Feature flag for cookie testing
+    const bool useCookieAuth = bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
 
     return Scaffold(
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -195,28 +230,92 @@ class _LoginScreenState extends State<LoginScreen> {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 32),
-                            LoginFields(
-                              usernameController: _usernameController,
-                              passwordController: _passwordController,
-                              onSubmitted: (String username,
-                                  String password,
-                                  BuildContext context,
-                                  Function needstwofa,
-                                  Function logincomplete) {
-                                LoginManager().login(username, password,
-                                    context, needstwofa, logincomplete);
-                              },
-                              needstwofa: () {
-                                if (context.mounted) {
-                                  context.pushReplacement('/2fa');
-                                }
-                              },
-                              logincomplete: () {
-                                if (context.mounted) {
-                                  context.pushReplacement('/home');
-                                }
-                              },
+                            Text(
+                              'Sign in to access your Floatplane content',
+                              style: textTheme.bodyLarge?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
+                            const SizedBox(height: 32),
+                            
+                            if (!_showCookieInput) ...[
+                              FilledButton.icon(
+                                onPressed: () {
+                                  LoginManager().loginWithOAuth2(
+                                    context,
+                                    () {
+                                      if (context.mounted) {
+                                        context.pushReplacement('/home');
+                                      }
+                                    },
+                                  );
+                                },
+                                icon: const Icon(Icons.login),
+                                label: const Text('Sign In with OAuth2'),
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(56),
+                                  textStyle: textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              if (useCookieAuth) ...[
+                                const SizedBox(height: 16),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _showCookieInput = true;
+                                    });
+                                  },
+                                  child: const Text('Use Cookie (Testing)'),
+                                ),
+                              ],
+                            ] else ...[
+                              TextField(
+                                controller: _cookieController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Cookie',
+                                  hintText: 'Paste sails.sid cookie value',
+                                  border: OutlineInputBorder(),
+                                  helperText: 'For testing purposes only',
+                                ),
+                                maxLines: 3,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed: () {
+                                  LoginManager().loginWithCookie(
+                                    context,
+                                    _cookieController.text,
+                                    () {
+                                      if (context.mounted) {
+                                        context.pushReplacement('/home');
+                                      }
+                                    },
+                                  );
+                                },
+                                icon: const Icon(Icons.cookie),
+                                label: const Text('Login with Cookie'),
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(56),
+                                  textStyle: textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _showCookieInput = false;
+                                  });
+                                },
+                                child: const Text('Back to OAuth2'),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -231,7 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               duration: const Duration(seconds: 5),
                               showCloseIcon: true,
                               content: Text(
-                                'After you complete login you can sign into the other service and you will get the options of viewing each service individually or to get a unified view.',
+                                'After you complete login you can sign into the other service and you will get the options of viewing each service individually.',
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
                                 ),
@@ -255,100 +354,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-class TwoFaScreen extends StatefulWidget {
-  const TwoFaScreen({super.key});
-
-  @override
-  State<TwoFaScreen> createState() => _TwoFaScreenState();
-}
-
-class _TwoFaScreenState extends State<TwoFaScreen> {
-  final TextEditingController twofaCodeController = TextEditingController();
-  late WhiteLabel labelthatneeds2fa;
-  bool isLoading = false;
-  bool turnstileLoaded = false;
-  String? sitekey;
-  String? token;
-
-  @override
-  void initState() {
-    super.initState();
-    init();
-  }
-
-  Future<void> init() async {
-    final whiteLabel = await whitelabels.get2faWhitelabel();
-    if (whiteLabel != null) {
-      labelthatneeds2fa = whiteLabel;
-    }
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              elevation: 3,
-              margin: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: isLoading
-                    ? const Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: CircularProgressIndicator(),
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(height: 16),
-                          Image.asset(
-                            'assets/app_foreground.png',
-                            width: 80,
-                            height: 80,
-                            filterQuality: FilterQuality.high,
-                          ),
-                          const SizedBox(height: 32),
-                          Text(
-                            'Enter 2FA Code',
-                            style: textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          TwoFAFields(
-                            whitelabel: labelthatneeds2fa,
-                            twofaCodeController: twofaCodeController,
-                            twofa: (String code,
-                                    WhiteLabel whitelabel,
-                                    BuildContext context,
-                                    Function twofacomplete) async =>
-                                await LoginManager().twofa(
-                                    code, whitelabel, context, twofacomplete),
-                            twofacomplete: () {
-                              if (context.mounted) {
-                                context.pushReplacement('/home');
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class LoginFields extends StatelessWidget {
   const LoginFields({
     required this.passwordController,
@@ -356,6 +361,7 @@ class LoginFields extends StatelessWidget {
     required this.onSubmitted,
     required this.needstwofa,
     required this.logincomplete,
+    this.onOAuth2Login,
     super.key,
   });
 
@@ -364,6 +370,7 @@ class LoginFields extends StatelessWidget {
   final Function(String, String, BuildContext, Function, Function) onSubmitted;
   final Function() needstwofa;
   final Function() logincomplete;
+  final Function()? onOAuth2Login;
 
   @override
   Widget build(BuildContext context) {
@@ -406,52 +413,6 @@ class LoginFields extends StatelessWidget {
             border: const OutlineInputBorder(),
           ),
         ),
-        // const SizedBox(height: 20),
-        // if (!Platform.isLinux && turnstileLoaded)
-        //   Center(
-        //       child: ClourdflareTurnstile(
-        //     siteKey: sitekey!,
-        //     options: options,
-        //     baseUrl: 'https://www.floatplane.com/',
-        //     onTokenReceived: (String token) {
-        //       this.token = token;
-        //     },
-        //     onTokenExpired: () {
-        //       token = null;
-        //       if (context.mounted) {
-        //         ScaffoldMessenger.of(context).showSnackBar(
-        //           SnackBar(
-        //             showCloseIcon: true,
-        //             closeIconColor: Colors.white,
-        //             content: const Center(
-        //                 child: Text('Turnstile Token Expired',
-        //                     style:
-        //                         TextStyle(color: Colors.white))),
-        //             backgroundColor:
-        //                 Colors.black.withValues(alpha: 0.4),
-        //           ),
-        //         );
-        //       }
-        //     },
-        //     onError: (TurnstileException e) {
-        //       token = null;
-        //       if (context.mounted) {
-        //         ScaffoldMessenger.of(context).showSnackBar(
-        //           SnackBar(
-        //             showCloseIcon: true,
-        //             closeIconColor: Colors.white,
-        //             content: Center(
-        //                 child: Text(
-        //                     'Turnstile Error: ${e.message}',
-        //                     style: const TextStyle(
-        //                         color: Colors.white))),
-        //             backgroundColor:
-        //                 Colors.black.withValues(alpha: 0.4),
-        //           ),
-        //         );
-        //       }
-        //     },
-        //   )),
         const SizedBox(height: 24),
         FilledButton(
           onPressed: () => onSubmitted(
@@ -470,63 +431,36 @@ class LoginFields extends StatelessWidget {
           ),
           child: const Text('Sign In'),
         ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-}
-
-class TwoFAFields extends StatelessWidget {
-  const TwoFAFields({
-    required this.whitelabel,
-    required this.twofaCodeController,
-    required this.twofa,
-    required this.twofacomplete,
-    super.key,
-  });
-
-  final TextEditingController twofaCodeController;
-  final Function(String, WhiteLabel, BuildContext, Function) twofa;
-  final Function() twofacomplete;
-  final WhiteLabel whitelabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: twofaCodeController,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (value) =>
-              twofa(value, whitelabel, context, twofacomplete),
-          decoration: InputDecoration(
-            labelText: 'Verification Code',
-            hintText: 'Enter 6-digit code',
-            border: const OutlineInputBorder(),
+        if (onOAuth2Login != null) ...[
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text('or'),
+              ),
+              Expanded(child: Divider()),
+            ],
           ),
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(6),
-          ],
-        ),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: () => twofa(
-              twofaCodeController.text, whitelabel, context, twofacomplete),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            textStyle: textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onOAuth2Login,
+            icon: const Icon(Icons.login),
+            label: const Text('Sign in with OAuth2'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              textStyle: textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
-          child: const Text('Verify Code'),
-        ),
+        ],
         const SizedBox(height: 16),
       ],
     );
   }
 }
+
+
