@@ -9,6 +9,7 @@ import '../controllers/media_player_service.dart';
 import '../models/video_quality.dart';
 import 'package:floaty/features/player/components/audio_controls.dart';
 import 'package:floaty/features/player/theme/audio_controls_theme.dart';
+
 class MediaPlayerWidget extends ConsumerStatefulWidget {
   final String whitelabelName;
   final String mediaUrl;
@@ -52,16 +53,32 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
   @override
   ConsumerState<MediaPlayerWidget> createState() => _MediaPlayerWidgetState();
 }
-class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
+
+class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
+    with WidgetsBindingObserver {
   bool subtitlesEnabled = false;
   late MediaPlayerService _mediaService;
   bool _isInitialized = false;
   dynamic _controller;
+  bool init = false;
+  bool pipAvailable = false;
+
   @override
   void initState() {
     super.initState();
-    _initializePlayer();
+    WidgetsBinding.instance.addObserver(this);
+    if (init == false) {
+      _initializePlayer();
+      init = true;
+    }
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   Future<void> _initializePlayer() async {
     print('Initializing player...');
     subtitlesEnabled =
@@ -85,6 +102,19 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
       timelineSprite: widget.timelineSprite,
       chapters: widget.chapters,
     );
+
+    // // Check PiP availability for the platform
+    // if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    //   pipAvailable = true;
+    // } else if (Platform.isAndroid) {
+    //   pipAvailable = await PipService.isPipAvailable;
+    //   print('Android PiP available: $pipAvailable');
+    // } else {
+    //   pipAvailable = false;
+    // }
+
+    pipAvailable = true;
+
     print('Player initialized');
     print('Initial state: ${widget.initialState}');
     await _mediaService.changeState(widget.initialState);
@@ -97,6 +127,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
       }
     }
   }
+
   Widget _buildMediaContent() {
     print('Building media content...');
     final theme = Theme.of(context);
@@ -110,38 +141,6 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
             color: Colors.white,
           ));
         }
-        //         if (widget.textTracks?.isNotEmpty == true)
-        //           StatefulBuilder(
-        //             builder: (context, setState) {
-        //               return MaterialDesktopCustomButton(
-        //                 icon: Icon(
-        //                   subtitlesEnabled
-        //                       ? Icons.closed_caption
-        //                       : Icons.closed_caption_off,
-        //                   color: Colors.white,
-        //                 ),
-        //                 onPressed: () async {
-        //                   final subtitles =
-        //                       await _mediaService.toggleSubtitles();
-        //                   setState(() {
-        //                     subtitlesEnabled = subtitles;
-        //                   });
-        //                 },
-        //               );
-        //             },
-        //           ),
-        //         MaterialDesktopCustomButton(
-        //           icon: const Icon(Icons.picture_in_picture),
-        //           onPressed: () {
-        //             _mediaService.changeState(MediaPlayerState.pip);
-        //             if (!mounted) return;
-        //             widget.contextBuild.go('/pip', extra: {
-        //               'controller': _mediaService.videoController,
-        //               'postId': widget.postId,
-        //               'live': _mediaService.currentLive,
-        //             });
-        //           },
-        //         ),
         Widget videoWidget;
         print('check');
         if (_controller is VideoController) {
@@ -154,16 +153,21 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
           );
         } else if (_controller is BetterPlayerController) {
           print('BetterPlayer');
-          videoWidget = BetterPlayer(controller: _mediaService.betterPlayer);
+          videoWidget = BetterPlayer(
+            key: _mediaService.betterPlayerGlobalKey,
+            controller: _mediaService.betterPlayer,
+          );
         } else {
           print('Unknown Player Type');
           videoWidget = const SizedBox.shrink();
         }
+
         return CustomPlayer(
           key: ValueKey(widget.postId ?? widget.mediaUrl),
-          isDesktop: true,
+          isDesktop: false,
           video: videoWidget,
           thumbnailSprite: widget.timelineSprite,
+          pipAvailable: pipAvailable,
         );
       case MediaType.audio:
         final theme = AudioControlsThemeData(
@@ -205,6 +209,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
         );
     }
   }
+
   Widget _buildMediaPlayer() {
     final playerState = ref.watch(mediaPlayerServiceProvider);
     switch (playerState) {
@@ -216,6 +221,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
         return const SizedBox.shrink();
     }
   }
+
   Widget _buildMainPlayer() {
     return Scaffold(
       body: Center(
@@ -223,6 +229,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
@@ -232,9 +239,5 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget> {
       ));
     }
     return _buildMediaPlayer();
-  }
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

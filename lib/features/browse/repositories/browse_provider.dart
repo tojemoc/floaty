@@ -32,13 +32,15 @@ class BrowseState {
   }
 }
 
-class BrowseNotifier extends StateNotifier<BrowseState> {
-  BrowseNotifier()
-      : super(BrowseState(
-            creators: [],
-            isLoading: true,
-            searchController: TextEditingController(),
-            debounce: null));
+class BrowseNotifier extends Notifier<BrowseState> {
+  @override
+  BrowseState build() {
+    return BrowseState(
+        creators: [],
+        isLoading: true,
+        searchController: TextEditingController(),
+        debounce: null);
+  }
 
   void fetchCreators() async {
     state = state.copyWith(isLoading: true);
@@ -95,7 +97,6 @@ class BrowseNotifier extends StateNotifier<BrowseState> {
   }
 }
 
-final browseProvider =
-    StateNotifierProvider<BrowseNotifier, BrowseState>((ref) {
+final browseProvider = NotifierProvider<BrowseNotifier, BrowseState>(() {
   return BrowseNotifier();
 });

@@ -18,24 +18,23 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profileScreenStateNotifier =
-        ref.watch(profileScreenProvider.notifier);
+    final profileScreenNotifier = ref.watch(profileScreenProvider.notifier);
 
     return ProfileScreenStateWrapper(
       userName: userName,
-      profileScreenStateNotifier: profileScreenStateNotifier,
+      profileScreenNotifier: profileScreenNotifier,
     );
   }
 }
 
 class ProfileScreenStateWrapper extends ConsumerStatefulWidget {
   final String userName;
-  final ProfileScreenStateNotifier profileScreenStateNotifier;
+  final ProfileScreenStateNotifier profileScreenNotifier;
 
   const ProfileScreenStateWrapper({
     super.key,
     required this.userName,
-    required this.profileScreenStateNotifier,
+    required this.profileScreenNotifier,
   });
 
   @override
@@ -312,7 +311,7 @@ class ProfileScreenStateWrapperState
   }
 
   void onPostTap(String postId) {
-    context.push('/post/$postId');
+    context.go('/post/$postId');
   }
 
   void onCreatorTap(String creatorUrl) {
@@ -398,7 +397,7 @@ class ProfileScreenStateWrapperState
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: () {
-        widget.profileScreenStateNotifier.updateSelectedIndex(index);
+        widget.profileScreenNotifier.updateSelectedIndex(index);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),

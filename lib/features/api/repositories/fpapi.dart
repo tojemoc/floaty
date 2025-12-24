@@ -9,12 +9,11 @@ import 'package:get_it/get_it.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:oauth2/oauth2.dart' as oauth2;
 import 'package:http/http.dart' as http;
 
 final FPApiRequests fpApiRequests = GetIt.I<FPApiRequests>();
 
-/// Custom HTTP client wrapper that adds cookie support to oauth2 Client
+/// Custom HTTP client wrapper that adds cookie support
 class _CookieHttpClient extends http.BaseClient {
   final http.Client _inner = http.Client();
   final PersistCookieJar cookieJar;
@@ -26,8 +25,10 @@ class _CookieHttpClient extends http.BaseClient {
     // Add cookies from jar to request
     final uri = request.url;
     final cookies = await cookieJar.loadForRequest(uri);
+
     if (cookies.isNotEmpty) {
-      final cookieHeader = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+      final cookieHeader =
+          cookies.map((c) => '${c.name}=${c.value}').join('; ');
       request.headers['cookie'] = cookieHeader;
     }
 
@@ -53,22 +54,73 @@ class _CookieHttpClient extends http.BaseClient {
   }
 }
 
+/// Custom HTTP client wrapper that adds OAuth2 Bearer token authentication
+class _OAuth2HttpClient extends http.BaseClient {
+  final _CookieHttpClient _inner;
+  final OAuth2Service _oauth2Service;
+  final String _whitelabel;
+
+  _OAuth2HttpClient(this._inner, this._oauth2Service, this._whitelabel);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Get fresh access token (handles refresh if needed)
+    String? accessToken =
+        await _oauth2Service.getAccessToken(whitelabel: _whitelabel);
+
+    // Check if token is expired and refresh if needed
+    final isExpired =
+        await _oauth2Service.isTokenExpired(whitelabel: _whitelabel);
+
+    if (isExpired && accessToken != null) {
+      final refreshToken =
+          await _oauth2Service.getRefreshToken(whitelabel: _whitelabel);
+      if (refreshToken != null) {
+        final result = await _oauth2Service.refreshToken(refreshToken);
+        if (result.isSuccess) {
+          await _oauth2Service.storeTokens(result, whitelabel: _whitelabel);
+          accessToken = result.accessToken;
+        }
+      }
+    }
+
+    // Add Authorization header if we have a token
+    if (accessToken != null && accessToken.isNotEmpty) {
+      request.headers['authorization'] = 'Bearer $accessToken';
+    }
+
+    // Delegate to inner client (which handles cookies)
+    final response = await _inner.send(request);
+
+    return response;
+  }
+
+  @override
+  void close() {
+    // Don't close the inner client as it's shared across all OAuth2 clients
+  }
+}
+
 class FPApiRequests {
   String userAgent = 'FloatyClient/error, CFNetwork';
   late final PersistCookieJar cookieJar;
   late final OAuth2Service _oauth2Service;
-  final Map<String, oauth2.Client> _oauth2Clients = {};
+  final Map<String, http.Client> _oauth2Clients = {};
   late final http.Client _fallbackClient;
+  late final _CookieHttpClient _cookieClient;
   PackageInfo? packageInfo;
-  
+
   // Feature flag for cookie-based testing
-  bool get useCookieAuth => const bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
-  
+  bool get useCookieAuth =>
+      const bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
+
   /// Get the appropriate HTTP client for a specific whitelabel
   Future<http.Client> getHttpClient(String whitelabel) async {
-    final authMethod = await _oauth2Service.getAuthMethod(whitelabel: whitelabel);
-    final useCookie = (authMethod == 'cookie') || (authMethod == null && useCookieAuth);
-    
+    final authMethod =
+        await _oauth2Service.getAuthMethod(whitelabel: whitelabel);
+    final useCookie =
+        (authMethod == 'cookie') || (authMethod == null && useCookieAuth);
+
     if (!useCookie) {
       // Try to get or create OAuth2 client for this whitelabel
       if (!_oauth2Clients.containsKey(whitelabel)) {
@@ -77,16 +129,16 @@ class FPApiRequests {
           _oauth2Clients[whitelabel] = client;
         }
       }
-      
+
       if (_oauth2Clients.containsKey(whitelabel)) {
         return _oauth2Clients[whitelabel]!;
       }
     }
-    
+
     // Fallback to cookie client
     return _fallbackClient;
   }
-  
+
   /// Get the appropriate HTTP client (OAuth2 or fallback with cookies)
   /// This is kept for backwards compatibility but deprecated
   @Deprecated('Use getHttpClient(whitelabel) instead')
@@ -103,28 +155,32 @@ class FPApiRequests {
     userAgent =
         'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
     final dir = await getApplicationSupportDirectory();
-    
-    _oauth2Service = OAuth2Service();
-    
+
+    _oauth2Service = OAuth2Service.instance;
+
     cookieJar = PersistCookieJar(
       storage: FileStorage('${dir.path}/.cookies/'),
     );
-    
+
+    // Create cookie HTTP client
+    _cookieClient = _CookieHttpClient(cookieJar);
+
     // Create fallback HTTP client with cookie support
-    _fallbackClient = _CookieHttpClient(cookieJar);
-    
+    _fallbackClient = _cookieClient;
+
     // Initialize OAuth2 clients for all logged-in whitelabels
     if (!useCookieAuth) {
       _initOAuth2Clients();
     }
   }
-  
+
   /// Initialize OAuth2 Clients for all logged-in whitelabels
   Future<void> _initOAuth2Clients() async {
     final loggedInLabels = await whitelabels.getLoggedInLabels();
     for (final label in loggedInLabels) {
       final whitelabelName = label.split('-')[0];
-      final authMethod = await _oauth2Service.getAuthMethod(whitelabel: whitelabelName);
+      final authMethod =
+          await _oauth2Service.getAuthMethod(whitelabel: whitelabelName);
       if (authMethod == 'oauth2') {
         final client = await createOAuth2Client(whitelabel: whitelabelName);
         if (client != null) {
@@ -133,66 +189,39 @@ class FPApiRequests {
       }
     }
   }
-  
+
   /// Create or recreate OAuth2 client from stored credentials for a specific whitelabel
-  Future<oauth2.Client?> createOAuth2Client({String? whitelabel}) async {
+  Future<http.Client?> createOAuth2Client({String? whitelabel}) async {
     try {
       final whitelabelName = whitelabel ?? 'default';
-      final accessToken = await _oauth2Service.getAccessToken(whitelabel: whitelabelName);
-      final refreshToken = await _oauth2Service.getRefreshToken(whitelabel: whitelabelName);
-      final expirationStr = await _oauth2Service.getExpiration(whitelabel: whitelabelName);
-      
+      // if (kDebugMode) {
+      //   print(
+      //       '[FPApiRequests] createOAuth2Client() for whitelabel: $whitelabelName');
+      // }
+
+      final accessToken =
+          await _oauth2Service.getAccessToken(whitelabel: whitelabelName);
+      final refreshToken =
+          await _oauth2Service.getRefreshToken(whitelabel: whitelabelName);
+
       if (accessToken == null || refreshToken == null) {
         return null;
       }
-      
-      DateTime? expiration;
-      if (expirationStr != null && expirationStr.isNotEmpty) {
-        expiration = DateTime.parse(expirationStr);
-      }
-      
-      // Get token endpoint from config or use default
-      final config = await _oauth2Service.getOpenIDConfig();
-      final tokenEndpoint = config?.tokenEndpoint ?? 
-          'https://auth.floatplane.com/realms/floatplane/protocol/openid-connect/token';
-      
-      final credentials = oauth2.Credentials(
-        accessToken,
-        refreshToken: refreshToken,
-        tokenEndpoint: Uri.parse(tokenEndpoint),
-        expiration: expiration,
-      );
-      
-      // Create a custom HTTP client that includes cookies
-      final innerClient = _CookieHttpClient(cookieJar);
-      
-      final client = oauth2.Client(
-        credentials,
-        identifier: await _oauth2Service.getClientId(),
-        onCredentialsRefreshed: (newCredentials) async {
-          // Save refreshed tokens back to storage for this whitelabel
-          await _oauth2Service.storeTokens(
-            OAuth2Result.success(
-              accessToken: newCredentials.accessToken,
-              refreshToken: newCredentials.refreshToken,
-              expirationDateTime: newCredentials.expiration,
-            ),
-            whitelabel: whitelabelName,
-          );
-        },
-        httpClient: innerClient,
-      );
-      
+
+      // Create a custom HTTP client that handles OAuth2 authentication and cookies
+      final client =
+          _OAuth2HttpClient(_cookieClient, _oauth2Service, whitelabelName);
+
       return client;
     } catch (e) {
       return null;
     }
   }
-  
+
   /// Remove OAuth2 client from cache (e.g., on logout)
   void clearOAuth2Client(String whitelabel) {
     if (_oauth2Clients.containsKey(whitelabel)) {
-        _oauth2Clients[whitelabel]?.close();
+      _oauth2Clients[whitelabel]?.close();
       _oauth2Clients.remove(whitelabel);
     }
   }
@@ -206,12 +235,12 @@ class FPApiRequests {
     try {
       final whiteLabel = whitelabels.getWhitelabel(whitelabel);
       final client = await getHttpClient(whiteLabel.friendlyName);
-      
+
       var url = Uri.parse('${whiteLabel.apiUrl}/$apiUrl');
       if (queryParams != null && queryParams.isNotEmpty) {
         url = url.replace(queryParameters: queryParams);
       }
-      
+
       final response = await client.post(
         url,
         headers: {'Content-Type': 'application/json', 'User-Agent': userAgent},
@@ -231,12 +260,12 @@ class FPApiRequests {
     try {
       final whiteLabel = whitelabels.getWhitelabel(whitelabel);
       final client = await getHttpClient(whiteLabel.friendlyName);
-      
+
       var url = Uri.parse('${whiteLabel.apiUrl}/$apiUrl');
       if (queryParams != null && queryParams.isNotEmpty) {
         url = url.replace(queryParameters: queryParams);
       }
-      
+
       final response = await client.get(
         url,
         headers: {'User-Agent': userAgent},
@@ -567,8 +596,7 @@ class FPApiRequests {
 
   Future<Map<String, dynamic>> getUserInfo(String whitelabel) async {
     try {
-      final userinfo = await fetchData(
-          'v3/user/self', whitelabel);
+      final userinfo = await fetchData('v3/user/self', whitelabel);
       if (userinfo != null && userinfo.isNotEmpty) {
         dynamic userinfoJson = jsonDecode(userinfo);
         return userinfoJson;
@@ -752,15 +780,18 @@ class FPApiRequests {
   }
 
   Future<String> deleteComment(String whitelabel, String commentId) async {
-    final response =
-        await postData('v3/comment/delete?comment=$commentId', whitelabel, {});
+    final response = await postData('v3/comment/delete', whitelabel, {
+      'comment': commentId,
+    });
     return response;
   }
 
   Future<String> editComment(
       String whitelabel, String commentId, String text) async {
-    final response = await postData(
-        'v3/comment/edit?comment=$commentId&text=$text', whitelabel, {});
+    final response = await postData('v3/comment/edit', whitelabel, {
+      'comment': commentId,
+      'text': text,
+    });
     return response;
   }
 
@@ -862,7 +893,8 @@ class FPApiRequests {
       String whitelabel, String creatorId) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
     final client = await getHttpClient(whiteLabel.friendlyName);
-    final url = Uri.parse('${whiteLabel.apiUrl}/v3/creator/subscribe?id=$creatorId');
+    final url =
+        Uri.parse('${whiteLabel.apiUrl}/v3/creator/subscribe?id=$creatorId');
     final response = await client.post(
       url,
       headers: {'User-Agent': userAgent},
@@ -873,7 +905,8 @@ class FPApiRequests {
   Future<String> unsubscribe(String whitelabel, String creatorId) async {
     final whiteLabel = whitelabels.getWhitelabel(whitelabel);
     final client = await getHttpClient(whiteLabel.friendlyName);
-    final url = Uri.parse('${whiteLabel.apiUrl}/v3/creator/unsubscribe?id=$creatorId');
+    final url =
+        Uri.parse('${whiteLabel.apiUrl}/v3/creator/unsubscribe?id=$creatorId');
     final response = await client.post(
       url,
       headers: {'User-Agent': userAgent},

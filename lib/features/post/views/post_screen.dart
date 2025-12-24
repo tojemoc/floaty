@@ -28,7 +28,9 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:floaty/features/api/repositories/download_manager.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
 enum ScreenLayout { small, medium, wide }
+
 class VideoDetailPage extends ConsumerStatefulWidget {
   const VideoDetailPage({super.key, required this.postId, this.t, this.a});
   final String postId;
@@ -37,6 +39,7 @@ class VideoDetailPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<VideoDetailPage> createState() => _VideoDetailPageState();
 }
+
 class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   late String postId;
   late MediaPlayerService _mediaService;
@@ -91,6 +94,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     _commentController.addListener(_updateCharCount);
     _loadComments();
   }
+
   Future<void> initUserAgent() async {
     packageInfo = await PackageInfo.fromPlatform();
     const flavor =
@@ -98,6 +102,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     userAgent =
         'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
   }
+
   //whenplane intergration
   //100% not converted from the browser extension
   String? extractShowDate(String title) {
@@ -114,10 +119,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
     return null;
   }
+
   String formatDate(String rawDate) {
     final date = DateTime.parse(rawDate);
     return "${date.year}/${addZero(date.month)}/${addZero(date.day)}";
   }
+
   String addZero(int n) => n > 9 ? "$n" : "0$n";
   String convertTimeFormat(String date1, String date2, bool length) {
     DateTime start = DateTime.parse(date1).toUtc();
@@ -128,9 +135,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return "${formatTime(start)} - ${formatTime(end)}";
     }
   }
+
   String formatTime(DateTime date) {
     return "${addZero(date.hour)}:${addZero(date.minute)}";
   }
+
   String formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -138,6 +147,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$hours:$minutes:$seconds';
   }
+
   // Parse timestamp from HH:MM:SS, MM:SS, or seconds
   int _parseTimestamp(String input) {
     // Try to parse as HH:MM:SS or MM:SS
@@ -163,6 +173,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // Try parsing as raw seconds
     return int.tryParse(input) ?? 0;
   }
+
   // Format seconds into HH:MM:SS or MM:SS for display
   String _formatTimestampForInput(int seconds) {
     final duration = Duration(seconds: seconds);
@@ -175,6 +186,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return '$minutes:${secs.toString().padLeft(2, '0')}';
     }
   }
+
   @override
   void dispose() {
     Future.microtask(() async {
@@ -200,6 +212,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     _attachmentScrollController.dispose();
     super.dispose();
   }
+
   @override
   void didUpdateWidget(VideoDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -212,11 +225,13 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       });
     }
   }
+
   void _updateCharCount() {
     setState(() {
       _currentLength = _commentController.text.length;
     });
   }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -325,11 +340,74 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             ),
           );
   }
+
   Future<Widget> _buildMediaContent() async {
     mediaService = ref.read(mediaPlayerServiceProvider.notifier);
     mediaState = ref.read(mediaPlayerServiceProvider);
     List<Map<String, dynamic>> textTrack = [];
     try {
+      // Check if the media service is already playing this exact post
+      // This handles returning from PiP/mini player without re-initializing
+      final hasActivePlayer = mediaService.videoController != null ||
+          mediaService.betterPlayerController != null;
+      if (mediaService.currentPostId == widget.postId && hasActivePlayer) {
+        // Already playing this post - return existing player without re-initialization
+        final postState = ref.watch(postProvider(widget.postId));
+        final post = postState.post;
+
+        // Determine the selected attachment type from what's currently playing
+        _selectedAttachmentId = mediaService.currentAttachmentId;
+
+        // Find the attachment type
+        for (final video in post?.videoAttachments ?? []) {
+          if (video.id == _selectedAttachmentId) {
+            selectedAttachment = video;
+            selectedMediaType = MediaType.video;
+            break;
+          }
+        }
+        if (selectedAttachment == null) {
+          for (final audio in post?.audioAttachments ?? []) {
+            if (audio.id == _selectedAttachmentId) {
+              selectedAttachment = audio;
+              selectedMediaType = MediaType.audio;
+              break;
+            }
+          }
+        }
+        if (selectedAttachment == null) {
+          for (final picture in post?.pictureAttachments ?? []) {
+            if (picture.id == _selectedAttachmentId) {
+              selectedAttachment = picture;
+              selectedMediaType = MediaType.image;
+              break;
+            }
+          }
+        }
+
+        // Return MediaPlayerWidget with same parameters - it will detect same URL and skip init
+        return MediaPlayerWidget(
+          whitelabelName:
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+          contextBuild: context.mounted ? context : context,
+          mediaUrl: mediaService.currentMediaUrl ?? '',
+          discoverable: post?.creator?.discoverable ?? false,
+          live: false,
+          mediaType: selectedMediaType,
+          attachment: selectedAttachment,
+          qualities: mediaService.availableQualities,
+          initialState: MediaPlayerState.main,
+          startFrom: mediaService.currentPosition.inSeconds,
+          textTracks: mediaService.textTracks,
+          title: mediaService.currentTitle ?? 'Unknown Title',
+          artist: mediaService.currentArtist ?? 'Unknown Creator',
+          artistImage: mediaService.currentArtistImage ?? '',
+          postId: widget.postId,
+          artworkUrl: mediaService.currentThumbnailUrl ?? '',
+          timelineSprite: mediaService.currentTimelineSprite,
+        );
+      }
+
       final postState = ref.watch(postProvider(widget.postId));
       final post = postState.post;
       if (post == null) {
@@ -501,6 +579,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ));
     }
   }
+
   Future<List<VideoQuality>> fetchVideoQualities(
       Map<String, dynamic> deliveryResponse, bool video,
       {bool v2 = false}) async {
@@ -553,6 +632,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
     return qualities;
   }
+
   String _getSortDisplayText() {
     if (sortBy == 'createdAt' && sortOrder == 'DESC') {
       return 'newest';
@@ -566,6 +646,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return 'newest';
     }
   }
+
 // here you see wasted time because floatplane download api v3 doesnt actually work even if
 // you fix the urls not matching because the token v3 generates is invalid
   // String convertV3ToV2(String v3Url) {  //   Uri uri = Uri.parse(v3Url);
@@ -712,6 +793,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       );
     }
+
     Future<void> showShareDialog() async {
       final mediaService = ref.read(mediaPlayerServiceProvider.notifier);
       mediaService.pause();
@@ -822,6 +904,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         },
       );
     }
+
     return [
       IconButton(
         icon: const Icon(Icons.share),
@@ -895,6 +978,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ),
     ];
   }
+
   Widget _buildMainContent(
       BoxConstraints constraints, ThemeData theme, ColorScheme colorScheme) {
     final postState = ref.watch(postProvider(widget.postId));
@@ -1565,6 +1649,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ],
     );
   }
+
   Future<void> _loadComments() async {
     setState(() {
       _comments.clear();
@@ -1609,6 +1694,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       }
     }
   }
+
   Widget _buildRecommendedSection(BoxConstraints constraints,
       {required ScreenLayout layout}) {
     final width = layout == ScreenLayout.wide ? 300.0 : constraints.maxWidth;
@@ -1650,6 +1736,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 }
+
 class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {
   @override
   void parse(BuildTree tree) {

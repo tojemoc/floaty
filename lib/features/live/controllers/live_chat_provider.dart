@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:floaty/features/api/repositories/fpwebsockets.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/api/utils/chat_utils.dart';
@@ -67,7 +68,7 @@ class EmoteResult {
 
 class ChatManager extends StateNotifier<List<ParsedChatMessage>> {
   ChatManager(this.ref) : super([]);
-  final dynamic ref;
+  final Ref ref;
 
   void addMessage(ParsedChatMessage message) {
     final newState = [...state, message];
@@ -332,9 +333,9 @@ class ChatManager extends StateNotifier<List<ParsedChatMessage>> {
     state = [];
   }
 
-  void chatDisconnect() {
+  void chatDisconnect(String creatorId) {
     state = [];
-    ref.read(webSocketEventHandlerProvider).chatDisconnect();
+    ref.read(webSocketEventHandlerProvider).chatDisconnect(creatorId);
   }
 
   void sendMessage(String username, String message, String id,
@@ -352,17 +353,17 @@ final chatterlistprovider =
 });
 
 class ChatterListManager extends StateNotifier<Map<String, dynamic>> {
+  final Ref ref;
   ChatterListManager(this.ref) : super({});
-  final dynamic ref;
 
   void updateUserList(Map<String, dynamic> userlist) {
     state = userlist;
   }
 
   void getChatterList(String creatorId) {
-    fpWebsockets.getChatUserList(creatorId, (data) {
-      ref.read(chatterlistprovider.notifier).updateUserList(data['data']);
-    });
+    // fpWebsockets.getChatUserList(creatorId, (data) {
+    //   ref.read(chatterlistprovider.notifier).updateUserList(data['data']);
+    // });
   }
 
   void reset() {
@@ -380,13 +381,11 @@ class PollWrapper {
 
 final pollprovider =
     StateNotifierProvider<PollManager, List<PollWrapper>>((ref) {
-  return PollManager(ref);
+  return PollManager();
 });
 
 class PollManager extends StateNotifier<List<PollWrapper>> {
-  final dynamic ref;
-
-  PollManager(this.ref) : super([]) {
+  PollManager() : super([]) {
     Timer.periodic(const Duration(seconds: 1), (timer) {
       for (var poll in state) {
         if (poll.ttd != null && poll.ttd!.isBefore(DateTime.now())) {
@@ -467,12 +466,11 @@ class PollManager extends StateNotifier<List<PollWrapper>> {
 
 final emotepickerProvider =
     StateNotifierProvider<EmotePickerManager, List<Emote>>((ref) {
-  return EmotePickerManager(ref);
+  return EmotePickerManager();
 });
 
 class EmotePickerManager extends StateNotifier<List<Emote>> {
-  EmotePickerManager(this.ref) : super([]);
-  final dynamic ref;
+  EmotePickerManager() : super([]);
 
   void updateEmotes(Map<String, dynamic> emotes) {
     state = (emotes['emotes'] as List).map<Emote>((e) {
@@ -491,8 +489,8 @@ final connectionProvider =
 });
 
 class ConnectionManager extends StateNotifier<Map<String, dynamic>> {
+  final Ref ref;
   ConnectionManager(this.ref) : super({});
-  final dynamic ref;
 
   void updateConnectionState(Map<String, dynamic> data) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -521,23 +519,23 @@ class WebSocketEventHandler {
 
   void sendMessage(String username, String message, String id,
       {bool isModerator = false, bool isCreator = true}) {
-    if (message.isNotEmpty) {
-      fpWebsockets.sendChatMessage(id, message, messagesHandler);
-    }
+    // if (message.isNotEmpty) {
+    //   fpWebsockets.sendChatMessage(id, message, messagesHandler);
+    // }
   }
 
   void chatConnect(
       String liveId, String creatorId, TextEditingController controller) {
     this.controller = controller;
-    fpWebsockets.chatConnect(liveId, messagesHandler, connectionHandler);
+    // fpWebsockets.chatConnect(liveId, messagesHandler, connectionHandler);
     fpWebsockets.pollConnect(creatorId, messagesHandler);
   }
 
   void chatDisconnect(String creatorId) {
-    fpWebsockets.chatDisconnect(connectionHandler);
+    // fpWebsockets.chatDisconnect(connectionHandler);
     fpWebsockets.pollDisconnect(
       creatorId,
-      connectionHandler,
+      messagesHandler,
     );
   }
 

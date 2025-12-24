@@ -9,11 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 
 class LoginManager {
-  final OAuth2Service _oauth2Service = OAuth2Service();
+  final OAuth2Service _oauth2Service = OAuth2Service.instance;
 
   /// Manual cookie login for testing
-  Future<void> loginWithCookie(BuildContext context, String cookieString,
-      Function logincomplete) async {
+  Future<void> loginWithCookie(
+      BuildContext context, String cookieString, Function logincomplete) async {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -22,7 +22,8 @@ class LoginManager {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Please enter a cookie.', style: textTheme.bodyLarge),
+              content:
+                  Text('Please enter a cookie.', style: textTheme.bodyLarge),
               backgroundColor: colorScheme.error,
             ),
           );
@@ -33,17 +34,16 @@ class LoginManager {
       // Store the cookie in the cookie jar
       final whiteLabel = await whitelabels.getSelectedWhitelabel();
       final uri = Uri.parse('https://${whiteLabel.domain}/');
-    
-      
+
       // Create cookie with far-future expiration (1 year from now)
       // Use the actual domain from the whitelabel (not the URI domain)
       // For multi-subdomain support, we could use .floatplane.com, but for now use exact domain
       final cookie = Cookie(whiteLabel.cookieName, cookieString)
         ..expires = DateTime.now().add(const Duration(days: 365))
-        ..domain = whiteLabel.domain  // Use the exact domain from whitelabel
+        ..domain = whiteLabel.domain // Use the exact domain from whitelabel
         ..path = '/'
         ..httpOnly = true;
-      
+
       // Save cookie to the domain's URI
       await fpApiRequests.cookieJar.saveFromResponse(
         uri,
@@ -53,13 +53,14 @@ class LoginManager {
       // Mark this whitelabel as using cookie auth
       await settings.setKey('${whiteLabel.friendlyName}_auth_method', 'cookie');
 
-      await whitelabels.addLoggedInLabel(
-            '${whiteLabel.friendlyName}-aaaaaaaaaa');
+      await whitelabels
+          .addLoggedInLabel('${whiteLabel.friendlyName}-aaaaaaaaaa');
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Cookie saved successfully!', style: textTheme.bodyLarge),
+            content:
+                Text('Cookie saved successfully!', style: textTheme.bodyLarge),
             backgroundColor: colorScheme.surfaceContainer,
           ),
         );
@@ -81,8 +82,8 @@ class LoginManager {
   }
 
   /// OAuth2 login flow
-  Future<void> loginWithOAuth2(BuildContext context, 
-      Function logincomplete) async {
+  Future<void> loginWithOAuth2(
+      BuildContext context, Function logincomplete) async {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -100,8 +101,8 @@ class LoginManager {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: 16),
-                Text('Opening browser for authentication...', 
-                     style: textTheme.bodyLarge),
+                Text('Opening browser for authentication...',
+                    style: textTheme.bodyLarge),
               ],
             ),
             backgroundColor: colorScheme.surfaceContainer,
@@ -117,25 +118,26 @@ class LoginManager {
       }
 
       if (result.isSuccess && result.accessToken != null) {
-        
         // Get whitelabel info
         final whiteLabel = await whitelabels.getSelectedWhitelabel();
-        
+
         // Store tokens with whitelabel
-        await _oauth2Service.storeTokens(result, whitelabel: whiteLabel.friendlyName);
-        
+        await _oauth2Service.storeTokens(result,
+            whitelabel: whiteLabel.friendlyName);
+
         // Mark as logged in
         final userId = result.userInfo?['sub'] ?? 'oauth2_user';
-        await whitelabels.addLoggedInLabel('${whiteLabel.friendlyName}-$userId');
-        
+        await whitelabels
+            .addLoggedInLabel('${whiteLabel.friendlyName}-$userId');
+
         logincomplete();
       } else if (result.isCancelled) {
         // User cancelled authentication
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Authentication was cancelled.', 
-                          style: textTheme.bodyLarge),
+              content: Text('Authentication was cancelled.',
+                  style: textTheme.bodyLarge),
               backgroundColor: colorScheme.surfaceContainer,
             ),
           );
@@ -147,8 +149,8 @@ class LoginManager {
             SnackBar(
               showCloseIcon: true,
               closeIconColor: Colors.white,
-              content: Text(result.error ?? 'OAuth2 authentication failed.', 
-                          style: textTheme.bodyLarge),
+              content: Text(result.error ?? 'OAuth2 authentication failed.',
+                  style: textTheme.bodyLarge),
               backgroundColor: colorScheme.error,
             ),
           );
@@ -162,7 +164,8 @@ class LoginManager {
           SnackBar(
             showCloseIcon: true,
             closeIconColor: Colors.white,
-            content: Text('Authentication error: $e', style: textTheme.bodyLarge),
+            content:
+                Text('Authentication error: $e', style: textTheme.bodyLarge),
             backgroundColor: colorScheme.error,
           ),
         );
@@ -189,7 +192,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     // Feature flag for cookie testing
-    const bool useCookieAuth = bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
+    const bool useCookieAuth =
+        bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
 
     return Scaffold(
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -238,7 +242,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 32),
-                            
                             if (!_showCookieInput) ...[
                               FilledButton.icon(
                                 onPressed: () {
@@ -462,5 +465,3 @@ class LoginFields extends StatelessWidget {
     );
   }
 }
-
-

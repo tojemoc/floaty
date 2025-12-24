@@ -38,9 +38,11 @@ class SettingsScreenState extends State<SettingsScreen> {
       setapptitle();
     });
   }
+
   void setapptitle() {
     rootLayoutKey.currentState?.setAppBar(const Text('Settings'));
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -213,25 +215,13 @@ class SettingsListScreen extends StatelessWidget {
                                 if (selectedWhitelabel == 'all') {
                                   final loggedLabels =
                                       await whitelabels.getLoggedInLabels();
-                                  final dir =
-                                      await getApplicationSupportDirectory();
-                                  final cookieJar = PersistCookieJar(
-                                    storage:
-                                        FileStorage('${dir.path}/.cookies/'),
-                                  );
-                                  final hiveStore =
-                                      HiveCacheStore('${dir.path}/.dio_cache');
+                                  final labels =
+                                      await whitelabels.getLabelsAndUsers();
                                   for (var label in loggedLabels) {
-                                    final whitelabel =
-                                        whitelabels.getWhitelabel(label);
-                                    await cookieJar.delete(Uri.parse(
-                                        'https://www.${whitelabel.domain}'));
-                                    await hiveStore.deleteFromPath(RegExp(
-                                        'https://www.${whitelabel.domain}'));
-                                    await fpApiRequests
-                                        .logout(whitelabel.friendlyName);
-                                    await whitelabels.removeLoggedInLabel(
-                                        whitelabel.friendlyName);
+                                    final reallabel = labels.where((l) =>
+                                        l.friendlyName == label.split('-')[0]);
+                                    await OAuth2Service.instance
+                                        .logout(reallabel.first);
                                   }
                                   if (context.mounted) {
                                     context.go('/login');
@@ -284,16 +274,12 @@ class SettingsListScreen extends StatelessWidget {
                 );
                 return;
               } else {
-                final whitelabel = await whitelabels.getSelectedWhitelabel();
-                final dir = await getApplicationSupportDirectory();
-                final cookieJar = PersistCookieJar(
-                  storage: FileStorage('${dir.path}/.cookies/'),
+                final whitelabellist = await whitelabels.getLabelsAndUsers();
+                final whitelabel = whitelabellist.firstWhere(
+                  (label) => label.loggedin,
+                  orElse: () => whitelabellist.first,
                 );
-                await cookieJar.deleteAll();
-                final hiveStore = HiveCacheStore('${dir.path}/.dio_cache');
-                await hiveStore
-                    .deleteFromPath(RegExp('https://www.${whitelabel.domain}'));
-                await fpApiRequests.logout(whitelabel.friendlyName);
+                await OAuth2Service.instance.logout(whitelabel);
                 await whitelabels.clearLoggedInLabels();
                 if (context.mounted) {
                   context.go('/login');
@@ -307,6 +293,7 @@ class SettingsListScreen extends StatelessWidget {
     );
   }
 }
+
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
   @override
@@ -321,6 +308,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     super.initState();
     getdata();
   }
+
   void getdata() async {
     final userinfo = await fpApiRequests.getUserInfo(
       (await whitelabels.getSelectedWhitelabel()).friendlyName,
@@ -332,6 +320,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -407,6 +396,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
     super.initState();
     getdata();
   }
+
   void getdata() async {
     final invoices = await fpApiRequests.getInvoices(
       (await whitelabels.getSelectedWhitelabel()).friendlyName,
@@ -418,6 +408,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -641,6 +632,7 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
     );
   }
 }
+
 class LicensesSettingsScreen extends StatelessWidget {
   const LicensesSettingsScreen({super.key});
   @override
@@ -697,6 +689,7 @@ class LicensesSettingsScreen extends StatelessWidget {
       ),
     );
   }
+
   Future<List<LicenseEntry>> _getAllLicenses() async {
     final List<LicenseEntry> all = [];
     await for (final entry in LicenseRegistry.licenses) {
@@ -727,6 +720,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1064,6 +1058,7 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
     );
   }
 }
+
 class AppearanceSettingsScreen extends StatefulWidget {
   const AppearanceSettingsScreen({
     super.key,
@@ -1072,6 +1067,7 @@ class AppearanceSettingsScreen extends StatefulWidget {
   State<AppearanceSettingsScreen> createState() =>
       _AppearanceSettingsScreenState();
 }
+
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   @override
   Widget build(BuildContext context) {
@@ -1242,11 +1238,13 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
     );
   }
 }
+
 class AccountsSettingsScreen extends StatefulWidget {
   const AccountsSettingsScreen({super.key});
   @override
   State<AccountsSettingsScreen> createState() => AccountsSettingsScreenState();
 }
+
 class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   late final List<WhiteLabelWithUser> loggedInLabels;
   bool isLoading = true;
@@ -1255,6 +1253,7 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
     super.initState();
     getdata();
   }
+
   void getdata() async {
     final loggedInLabels = await whitelabels.getLabelsAndUsers();
     if (mounted) {
@@ -1264,6 +1263,7 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1302,8 +1302,8 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                           ),
                           title: Text(whitelabel.name),
                           subtitle: Text(whitelabel.loggedin
-                                  ? 'Logged In (${whitelabel.user!.username})'
-                                  : 'Not Logged In'),
+                              ? 'Logged In (${whitelabel.user!.username})'
+                              : 'Not Logged In'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1312,14 +1312,16 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                                   icon: const Icon(Icons.cookie),
                                   tooltip: 'Login with Cookie',
                                   onPressed: () async {
-                                    final cookieController = TextEditingController();
+                                    final cookieController =
+                                        TextEditingController();
                                     final result = await showDialog<bool>(
                                       context: context,
                                       builder: (dialogContext) => AlertDialog(
                                         title: const Text('Cookie Login'),
                                         content: Column(
                                           mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               'Paste your sails.sid cookie value:',
@@ -1338,16 +1340,24 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () => Navigator.of(dialogContext).pop(false),
+                                            onPressed: () =>
+                                                Navigator.of(dialogContext)
+                                                    .pop(false),
                                             child: const Text('Cancel'),
                                           ),
                                           TextButton(
                                             onPressed: () {
-                                              if (cookieController.text.isNotEmpty) {
-                                                Navigator.of(dialogContext).pop(true);
+                                              if (cookieController
+                                                  .text.isNotEmpty) {
+                                                Navigator.of(dialogContext)
+                                                    .pop(true);
                                               } else {
-                                                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                                  const SnackBar(content: Text('Please enter a cookie value')),
+                                                ScaffoldMessenger.of(
+                                                        dialogContext)
+                                                    .showSnackBar(
+                                                  const SnackBar(
+                                                      content: Text(
+                                                          'Please enter a cookie value')),
                                                 );
                                               }
                                             },
@@ -1357,55 +1367,73 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                                       ),
                                     );
 
-                                    
-                                    if (result == true && cookieController.text.isNotEmpty) {
+                                    if (result == true &&
+                                        cookieController.text.isNotEmpty) {
                                       try {
-                                        final dir = await getApplicationSupportDirectory();
+                                        final dir =
+                                            await getApplicationSupportDirectory();
                                         final cookieJar = PersistCookieJar(
-                                          storage: FileStorage('${dir.path}/.cookies/'),
+                                          storage: FileStorage(
+                                              '${dir.path}/.cookies/'),
                                         );
-                                        
-                                        final cookie = Cookie('sails.sid', cookieController.text)
-                                          ..domain = whitelabel.whitelabel.domain
+
+                                        final cookie = Cookie(
+                                            'sails.sid', cookieController.text)
+                                          ..domain =
+                                              whitelabel.whitelabel.domain
                                           ..path = '/'
                                           ..httpOnly = true
-                                          ..expires = DateTime.now().add(const Duration(days: 365));
-                                        
+                                          ..expires = DateTime.now()
+                                              .add(const Duration(days: 365));
+
                                         // Save to both with and without www to ensure it works
                                         await cookieJar.saveFromResponse(
-                                          Uri.parse('https://www.${whitelabel.whitelabel.domain}'),
+                                          Uri.parse(
+                                              'https://www.${whitelabel.whitelabel.domain}'),
                                           [cookie],
                                         );
                                         await cookieJar.saveFromResponse(
-                                          Uri.parse('https://${whitelabel.whitelabel.domain}'),
+                                          Uri.parse(
+                                              'https://${whitelabel.whitelabel.domain}'),
                                           [cookie],
                                         );
-                                        
-                                        
-                                        // Set auth method to cookie
-                                        final oauth2Service = OAuth2Service();
-                                        await oauth2Service.setAuthMethod('cookie', whitelabel: whitelabel.whitelabel.friendlyName);
-                                        
-                                        
-                                        // Try to get user info to verify
-                                        final userInfo = await fpApiRequests.getUserInfo(whitelabel.whitelabel.friendlyName);
-                                        
 
-                                          final userId = userInfo['id'] ?? 'cookie_user';
-                                          await whitelabels.addLoggedInLabel('${whitelabel.whitelabel.friendlyName}-$userId');
-                                          
-                                          if (context.mounted) {
-                                            rootLayoutKey.currentState!.ref
-                                                .read(rootProvider.notifier)
-                                                .loadsidebar();
-                                            final location = GoRouterState.of(context).uri.toString();
-                                            context.pushReplacement(
-                                                '$location?time=${DateTime.now().millisecondsSinceEpoch}');
-                                          }
+                                        // Set auth method to cookie
+                                        final oauth2Service =
+                                            OAuth2Service.instance;
+                                        await oauth2Service.setAuthMethod(
+                                            'cookie',
+                                            whitelabel: whitelabel
+                                                .whitelabel.friendlyName);
+
+                                        // Try to get user info to verify
+                                        final userInfo = await fpApiRequests
+                                            .getUserInfo(whitelabel
+                                                .whitelabel.friendlyName);
+
+                                        final userId =
+                                            userInfo['id'] ?? 'cookie_user';
+                                        await whitelabels.addLoggedInLabel(
+                                            '${whitelabel.whitelabel.friendlyName}-$userId');
+
+                                        if (context.mounted) {
+                                          rootLayoutKey.currentState!.ref
+                                              .read(rootProvider.notifier)
+                                              .loadsidebar();
+                                          final location =
+                                              GoRouterState.of(context)
+                                                  .uri
+                                                  .toString();
+                                          context.pushReplacement(
+                                              '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                        }
                                       } catch (e) {
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Login failed: $e')),
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                                content:
+                                                    Text('Login failed: $e')),
                                           );
                                         }
                                       }
@@ -1414,117 +1442,80 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
                                 ),
                               ElevatedButton(
                                 onPressed: () async {
-                                 if (whitelabel.loggedin) {
+                                  if (whitelabel.loggedin) {
                                     try {
-                                      // Logout - use whitelabel-specific tokens
-                                      final oauth2Service = OAuth2Service();
-                                      final accessToken = await oauth2Service.getAccessToken(
-                                        whitelabel: whitelabel.whitelabel.friendlyName,
+                                      await OAuth2Service.instance.logout(
+                                        whitelabel,
                                       );
-                                      
-                                      // Try to revoke token on server
-                                      if (accessToken != null) {
-                                        await oauth2Service.logout(accessToken);
-                                      }
-                                      
-                                      // Clear OAuth2 client from cache
-                                      fpApiRequests.clearOAuth2Client(whitelabel.whitelabel.friendlyName);
-                                      
-                                      // Clear OAuth2 tokens for this whitelabel
-                                      await oauth2Service.clearStoredTokens(
-                                        whitelabel: whitelabel.whitelabel.friendlyName,
-                                      );
-                                      
-                                      // Clear cookies (try both with and without www)
-                                      final dir = await getApplicationSupportDirectory();
-                                      final cookieJar = PersistCookieJar(
-                                        storage: FileStorage('${dir.path}/.cookies/'),
-                                      );
-                                      await cookieJar.delete(Uri.parse(
-                                        'https://www.${whitelabel.whitelabel.domain}',
-                                      ));
-                                      await cookieJar.delete(Uri.parse(
-                                        'https://${whitelabel.whitelabel.domain}',
-                                      ));
-                                      
-                                      // Clear cache
-                                      final hiveStore = HiveCacheStore('${dir.path}/.dio_cache');
-                                      await hiveStore.deleteFromPath(RegExp(
-                                          'https://www.${whitelabel.whitelabel.domain}'));
-                                      
-                                      // Call logout API endpoint
-                                        await fpApiRequests.logout(whitelabel.whitelabel.friendlyName);
-                                      
-                                      // Remove from logged in labels
-                                      await whitelabels.removeLoggedInLabel(
-                                          whitelabel.whitelabel.friendlyName);
-                                      
-                                      // Update selected whitelabel if needed
-                                      if ((await whitelabels.getFirstLoggedInLabelOrDefault())
-                                              .friendlyName ==
-                                          (await settings.getKey('whitelabel'))) {
-                                        rootLayoutKey.currentState?.ref
-                                            .read(mediaPlayerServiceProvider.notifier)
-                                            .changeState(MediaPlayerState.none);
-                                      }
-                                      
-                                      await settings.setKey(
-                                          'whitelabel',
-                                          (await whitelabels.getFirstLoggedInLabelOrDefault())
-                                              .friendlyName);
-                                      
+
                                       // Reload sidebar
                                       rootLayoutKey.currentState?.ref
                                           .read(rootProvider.notifier)
                                           .loadsidebar();
-                                      
+
                                       // Refresh the page
                                       if (context.mounted) {
-                                        final location = GoRouterState.of(context).uri.toString();
+                                        final location =
+                                            GoRouterState.of(context)
+                                                .uri
+                                                .toString();
                                         context.pushReplacement(
                                             '$location?time=${DateTime.now().millisecondsSinceEpoch}');
                                       }
-                                      
+
                                       // If no accounts left, go to login
                                       if (context.mounted &&
-                                          await whitelabels.getLoggedInLabelsLength() == 0) {
+                                          await whitelabels
+                                                  .getLoggedInLabelsLength() ==
+                                              0) {
                                         context.go('/login');
                                       }
                                     } catch (e) {
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Logout failed: $e')),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content:
+                                                  Text('Logout failed: $e')),
                                         );
                                       }
                                     }
-                                } else {
-                                  // Login with OAuth2
-                                  final oauth2Service = OAuth2Service();
-                                  final result = await oauth2Service.login();
-                                  
-                                  if (result.isSuccess) {
-                                    await oauth2Service.storeTokens(
-                                      result,
-                                      whitelabel: whitelabel.whitelabel.friendlyName,
+                                  } else {
+                                    // Login with OAuth2
+                                    final oauth2Service =
+                                        OAuth2Service.instance;
+                                    final result = await oauth2Service.login(
+                                      whiteLabel: whitelabel.whitelabel,
                                     );
-                                    final userId = result.userInfo?['sub'] ?? 'oauth2_user';
-                                    await whitelabels.addLoggedInLabel(
-                                        '${whitelabel.whitelabel.friendlyName}-$userId');
-                                    
-                                    if (context.mounted) {
-                                      rootLayoutKey.currentState!.ref
-                                          .read(rootProvider.notifier)
-                                          .loadsidebar();
-                                      final location =
-                                          GoRouterState.of(context).uri.toString();
-                                      context.pushReplacement(
-                                          '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+
+                                    if (result.isSuccess) {
+                                      await oauth2Service.storeTokens(
+                                        result,
+                                        whitelabel:
+                                            whitelabel.whitelabel.friendlyName,
+                                      );
+                                      final userId = result.userInfo?['sub'] ??
+                                          'oauth2_user';
+                                      await whitelabels.addLoggedInLabel(
+                                          '${whitelabel.whitelabel.friendlyName}-$userId');
+
+                                      if (context.mounted) {
+                                        rootLayoutKey.currentState!.ref
+                                            .read(rootProvider.notifier)
+                                            .loadsidebar();
+                                        final location =
+                                            GoRouterState.of(context)
+                                                .uri
+                                                .toString();
+                                        context.pushReplacement(
+                                            '$location?time=${DateTime.now().millisecondsSinceEpoch}');
+                                      }
                                     }
                                   }
-                                }
-                              },
-                              child: Text(whitelabel.loggedin ? 'Logout' : 'Login'),
-                            ),
+                                },
+                                child: Text(
+                                    whitelabel.loggedin ? 'Logout' : 'Login'),
+                              ),
                             ],
                           ),
                         );
@@ -1537,6 +1528,7 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
     );
   }
 }
+
 class ToggleSetting extends StatefulWidget {
   const ToggleSetting({
     super.key,
@@ -1589,6 +1581,7 @@ class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
     super.initState();
     _loadPlayerType();
   }
+
   Future<void> _loadPlayerType() async {
     final playerVODTypeString = await Settings().getKey('player_backend');
     PlayerType playerVODType;
@@ -1610,6 +1603,7 @@ class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
       selectedVODPlayerType = playerVODType;
     });
   }
+
   Future<void> _setPlayerType(PlayerType? type) async {
     if (type == null) return;
     final enumString = type.toString().split('.').last;
@@ -1619,6 +1613,7 @@ class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
     });
     await MediaPlayerService().loadPlayer(type);
   }
+
   String _getPlayerTypeName(PlayerType type) {
     switch (type) {
       case PlayerType.mediaKit:
@@ -1627,6 +1622,7 @@ class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
         return 'Better Player';
     }
   }
+
   @override
   Widget build(BuildContext context) {
     if (selectedVODPlayerType == null) {

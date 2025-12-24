@@ -1,35 +1,43 @@
 import 'dart:async';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/player/components/custom_player/custom_seekbar.dart';
+import 'package:floaty/features/player/components/custom_player/fullscreen_player.dart';
+import 'package:floaty/features/player/components/custom_player/pip_overlay.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:floaty/features/player/models/subtitle_style.dart';
 import 'package:language_code/language_code.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
+
 // 1. Define Intents for player actions
 class PlayPauseIntent extends Intent {
   const PlayPauseIntent();
 }
+
 class SeekForwardIntent extends Intent {
   const SeekForwardIntent();
 }
+
 class SeekBackwardIntent extends Intent {
   const SeekBackwardIntent();
 }
+
 class VolumeUpIntent extends Intent {
   const VolumeUpIntent();
 }
+
 class VolumeDownIntent extends Intent {
   const VolumeDownIntent();
 }
+
 class ToggleFullscreenIntent extends Intent {
   const ToggleFullscreenIntent();
 }
+
 // 2. Define Actions that respond to the Intents
 class PlayPauseAction extends Action<PlayPauseIntent> {
   PlayPauseAction(this.mediaService);
@@ -39,6 +47,7 @@ class PlayPauseAction extends Action<PlayPauseIntent> {
     mediaService.playpause();
   }
 }
+
 class SeekForwardAction extends Action<SeekForwardIntent> {
   SeekForwardAction(this.mediaService);
   final MediaPlayerService mediaService;
@@ -53,6 +62,7 @@ class SeekForwardAction extends Action<SeekForwardIntent> {
     }
   }
 }
+
 class SeekBackwardAction extends Action<SeekBackwardIntent> {
   SeekBackwardAction(this.mediaService);
   final MediaPlayerService mediaService;
@@ -66,6 +76,7 @@ class SeekBackwardAction extends Action<SeekBackwardIntent> {
     }
   }
 }
+
 class VolumeUpAction extends Action<VolumeUpIntent> {
   VolumeUpAction(this.mediaService);
   final MediaPlayerService mediaService;
@@ -76,6 +87,7 @@ class VolumeUpAction extends Action<VolumeUpIntent> {
     }
   }
 }
+
 class VolumeDownAction extends Action<VolumeDownIntent> {
   VolumeDownAction(this.mediaService);
   final MediaPlayerService mediaService;
@@ -86,6 +98,7 @@ class VolumeDownAction extends Action<VolumeDownIntent> {
     }
   }
 }
+
 class ToggleFullscreenAction extends Action<ToggleFullscreenIntent> {
   ToggleFullscreenAction(this.onToggleFullscreen);
   final VoidCallback onToggleFullscreen;
@@ -94,6 +107,7 @@ class ToggleFullscreenAction extends Action<ToggleFullscreenIntent> {
     onToggleFullscreen();
   }
 }
+
 class CustomPlayer extends ConsumerStatefulWidget {
   final Widget? video;
   final bool isDesktop;
@@ -101,6 +115,8 @@ class CustomPlayer extends ConsumerStatefulWidget {
   final bool showFullscreenButton;
   final bool showSettingsButton;
   final ImageModel? thumbnailSprite;
+  final bool pipAvailable;
+  final List<Widget>? topControlsOverride;
   const CustomPlayer({
     super.key,
     this.video,
@@ -109,12 +125,15 @@ class CustomPlayer extends ConsumerStatefulWidget {
     this.showFullscreenButton = true,
     this.showSettingsButton = true,
     this.thumbnailSprite,
+    this.pipAvailable = false,
+    this.topControlsOverride,
   });
   @override
   ConsumerState<CustomPlayer> createState() => _CustomPlayerState();
 }
 
 enum _SubtitleStyleMenu { main, size, weight, opacity, color }
+
 enum _SettingsMenu { main, speed, quality, subtitles, subtitlesStyle }
 
 class _CustomPlayerState extends ConsumerState<CustomPlayer>
@@ -153,12 +172,14 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       });
     }
   }
+
   void _startHideTimer() {
     _hideControlsTimer?.cancel();
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       _hideControls();
     });
   }
+
   void _handleHover(PointerEvent _) {
     if (!_shouldShowControls) {
       setState(() => _shouldShowControls = true);
@@ -186,6 +207,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       _startHideTimer(); // Reset the hide timer on hover
     }
   }
+
   void _handleExit(PointerEvent _) {
     _hideControlsTimer?.cancel();
     if (_showControls || _showSettings) {
@@ -202,14 +224,17 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       });
     }
   }
+
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
     _tapResetTimer?.cancel();
     _hideIndicatorTimer?.cancel();
+    _pipExitSubscription?.cancel();
     _animationController.dispose();
     super.dispose();
   }
+
   @override
   void initState() {
     super.initState();
@@ -218,10 +243,21 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       duration: const Duration(milliseconds: 200),
     );
     mediaService = ref.read(mediaPlayerServiceProvider.notifier);
+
+    // Initialize all state from media service to preserve state across widget recreations
+    // (e.g., fullscreen, PiP, returning from mini player)
     _volume = mediaService.volumeLevel;
+    _position = mediaService.currentPosition;
+    _duration = mediaService.currentDuration;
+    _buffered = mediaService.buffer;
+    _isPlaying = mediaService.isPlaying;
+    _playbackSpeed = mediaService.playbackSpeed;
+    _buffering = mediaService.buffering;
+
     _setupPlayerListeners();
     _initBrightnessAndVolume();
   }
+
   Future<void> _initBrightnessAndVolume() async {
     try {
       // Use system brightness for consistency with volume
@@ -236,6 +272,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       _currentVolume = 0.5;
     }
   }
+
   void _setupPlayerListeners() {
     // Listen to player state changes
     mediaService.positionStream.listen((position) {
@@ -274,6 +311,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       }
     });
   }
+
   // Touch gesture detection
   final bool _isSeeking = false;
   // Tap to seek
@@ -290,6 +328,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
   double _currentVolume = 0.5;
   bool _showBrightnessIndicator = false;
   bool _showVolumeIndicator = false;
+  StreamSubscription<bool>? _pipExitSubscription;
   Timer? _hideIndicatorTimer;
   void _handleTapSeek(bool isLeftSide) {
     // Increment tap count
@@ -301,10 +340,10 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
     final totalTaps = _leftTapCount + _rightTapCount;
     // Cancel any existing timer
     _tapResetTimer?.cancel();
-    // If this is the first tap, start a 500ms timer
+    // If this is the first tap, start a 250ms timer
     if (totalTaps == 1) {
-      _tapResetTimer = Timer(const Duration(milliseconds: 500), () {
-        // After 500ms, if still only one tap
+      _tapResetTimer = Timer(const Duration(milliseconds: 250), () {
+        // After 250ms, if still only one tap
         if (_leftTapCount + _rightTapCount == 1) {
           // Single tap: toggle controls
           if (_shouldShowControls) {
@@ -335,7 +374,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
     final clampedPosition = newPosition.clamp(0, _duration.inSeconds);
     mediaService.seek(Duration(seconds: clampedPosition));
     // Wait a bit for more taps before hiding indicator
-    _tapResetTimer = Timer(const Duration(milliseconds: 500), () {
+    _tapResetTimer = Timer(const Duration(milliseconds: 250), () {
       // Reset state
       setState(() {
         _leftTapCount = 0;
@@ -344,6 +383,29 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       });
     });
   }
+
+  /// Handle tap in the middle area - immediately toggle controls without waiting for double tap timer
+  void _handleMiddleTap() {
+    // Cancel any existing tap timer
+    _tapResetTimer?.cancel();
+    // Reset tap counts
+    setState(() {
+      _leftTapCount = 0;
+      _rightTapCount = 0;
+      _showSeekIndicator = false;
+    });
+    // Immediately toggle controls
+    if (_shouldShowControls) {
+      _hideControls();
+    } else {
+      setState(() {
+        _shouldShowControls = true;
+        _showControls = true;
+      });
+      _startHideTimer();
+    }
+  }
+
   void _handleVerticalDragStart(
       DragStartDetails details, bool isLeftSide, double screenWidth) {
     final position = details.localPosition;
@@ -371,6 +433,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       }
     });
   }
+
   void _handleVerticalDragUpdate(
       DragUpdateDetails details, bool isLeftSide, double screenHeight) {
     if (_gestureStartY == null || _gestureStartValue == null) return;
@@ -387,6 +450,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       VolumeController.instance.setVolume(newVolume);
     }
   }
+
   void _handleVerticalDragEnd() {
     _gestureStartY = null;
     _gestureStartValue = null;
@@ -403,6 +467,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -784,11 +849,11 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                                       _handleVerticalDragEnd(),
                                 ),
                               ),
-                              // Middle third - seek backward (or show controls on single tap)
+                              // Middle third - immediately toggle controls (no timer)
                               Expanded(
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onTapUp: (details) => _handleTapSeek(true),
+                                  onTapUp: (details) => _handleMiddleTap(),
                                 ),
                               ),
                               // Right third - seek forward + volume swipe
@@ -811,6 +876,8 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                         ),
                       ] else ...[
                         // Safe zones when controls are visible (avoid top/bottom bars)
+                        // Only left and right sides for double-tap seek
+                        // Middle area is NOT covered so play/pause button can be tapped
                         // Left side
                         Positioned(
                           left: 0,
@@ -844,9 +911,11 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       },
     );
   }
+
   Widget _buildVideoPlayer() {
     return widget.video!;
   }
+
   Widget _buildControlsOverlay(MediaPlayerService mediaService,
       {required bool isLandscape}) {
     final isMobile = !widget.isDesktop;
@@ -914,31 +983,44 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildTopBar(MediaPlayerService mediaService) {
     final isMobile = !widget.isDesktop;
     return Container(
       padding: const EdgeInsets.all(12),
       child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: () {
-              mediaService.changeState(MediaPlayerState.none);
-              mediaService.stop();
-              Navigator.pop(context);
-            },
-          ),
-          const Spacer(),
-          // Settings button on mobile
-          if (isMobile)
-            IconButton(
-              icon: const Icon(Icons.settings, color: Colors.white),
-              onPressed: _toggleSettings,
-            ),
-        ],
+        children: widget.topControlsOverride ??
+            [
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () async {
+                  mediaService.changeState(MediaPlayerState.none);
+                  mediaService.stop();
+                  if (widget.isFullscreen) {
+                    // In fullscreen: first exit fullscreen overlay, then pop the underlying page
+                    Navigator.of(context, rootNavigator: true).pop();
+                    // Small delay to ensure fullscreen is closed first
+                    await Future.delayed(const Duration(milliseconds: 50));
+                    if (context.mounted) {
+                      Navigator.of(context, rootNavigator: true).maybePop();
+                    }
+                  } else {
+                    Navigator.maybePop(context);
+                  }
+                },
+              ),
+              const Spacer(),
+              // Settings button on mobile
+              if (isMobile)
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: _toggleSettings,
+                ),
+            ],
       ),
     );
   }
+
   Widget _buildBottomBar({required bool isLandscape}) {
     final isMobile = !widget.isDesktop;
     final chapters = mediaService.chapters;
@@ -994,9 +1076,12 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                     bufferedTrackColor: Colors.white38,
                     thumbColor: Colors.white,
                     trackHeight: 4.0,
-                    thumbnailSpriteUrl: widget.thumbnailSprite?.path,
-                    spriteWidth: widget.thumbnailSprite?.width,
-                    spriteHeight: widget.thumbnailSprite?.height,
+                    thumbnailSpriteUrl: widget.thumbnailSprite?.path ??
+                        mediaService.currentTimelineSprite?.path,
+                    spriteWidth: widget.thumbnailSprite?.width ??
+                        mediaService.currentTimelineSprite?.width,
+                    spriteHeight: widget.thumbnailSprite?.height ??
+                        mediaService.currentTimelineSprite?.height,
                     videoDuration: _duration,
                     previewBuilder: (time) {
                       return Container(
@@ -1118,8 +1203,45 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                       )
                     else
                       const Spacer(),
-                    // Settings button (only on desktop or fullscreen)
+                    if (widget.pipAvailable) ...[
+                      // PiP button
+                      _buildControlButton(
+                        Icons.picture_in_picture,
+                        () async {
+                          mediaService.enterpip();
+                          await Navigator.of(context, rootNavigator: true).push(
+                            PageRouteBuilder(
+                              opaque: true,
+                              barrierColor: Colors.black,
+                              pageBuilder:
+                                  (context, animation, secondaryAnimation) {
+                                return PiPOverlayPage(
+                                  video: widget.video,
+                                  mediaService: mediaService,
+                                );
+                              },
+                              transitionDuration: Duration.zero,
+                              reverseTransitionDuration: Duration.zero,
+                            ),
+                          );
+                        },
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (!isMobile && mediaService.textTracks != null) ...[
+                      // Subtitles button
+                      _buildControlButton(
+                        mediaService.subtitlesEnabled
+                            ? Icons.subtitles
+                            : Icons.subtitles_outlined,
+                        mediaService.toggleSubtitles,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     if (!isMobile)
+                      // Settings button (only on desktop or fullscreen)
                       _buildControlButton(
                         Icons.settings,
                         _toggleSettings,
@@ -1205,6 +1327,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSettingsPanel() {
     return Positioned(
       right: 16,
@@ -1229,6 +1352,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildMobileSettingsSheet() {
     return StatefulBuilder(
       builder: (context, setModalState) {
@@ -1267,6 +1391,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       },
     );
   }
+
   Widget _buildCurrentMenuWithState(StateSetter setModalState) {
     // This wrapper allows the bottom sheet to update when menu changes
     return Builder(
@@ -1282,30 +1407,26 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
             break;
           case _SettingsMenu.speed:
             menu = _buildSpeedMenuWithBack(() {
-              setModalState(() {
-                setModalState(() => _currentSettingsMenu = _SettingsMenu.main);
-              });
+              _currentSettingsMenu = _SettingsMenu.main;
+              setModalState(() {});
             }, setModalState: setModalState);
             break;
           case _SettingsMenu.quality:
             menu = _buildQualityMenuWithBack(() {
-              setModalState(() {
-                setState(() => _currentSettingsMenu = _SettingsMenu.main);
-              });
+              _currentSettingsMenu = _SettingsMenu.main;
+              setModalState(() {});
             }, setModalState: setModalState);
             break;
           case _SettingsMenu.subtitles:
             menu = _buildSubtitlesMenuWithBack(() {
-              setModalState(() {
-                setState(() => _currentSettingsMenu = _SettingsMenu.main);
-              });
+              _currentSettingsMenu = _SettingsMenu.main;
+              setModalState(() {});
             }, setModalState: setModalState);
             break;
           case _SettingsMenu.subtitlesStyle:
             menu = _buildSubtitlesStyleMenuWithBack(() {
-              setModalState(() {
-                setState(() => _currentSettingsMenu = _SettingsMenu.main);
-              });
+              _currentSettingsMenu = _SettingsMenu.main;
+              setModalState(() {});
             }, setModalState: setModalState);
             break;
         }
@@ -1313,6 +1434,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       },
     );
   }
+
   Widget _buildCurrentMenu() {
     // Reset the subtitle style menu when changing to a different settings menu
     if (_currentSettingsMenu != _SettingsMenu.subtitlesStyle) {
@@ -1331,6 +1453,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
         return _buildSubtitlesStyleMenu();
     }
   }
+
   Widget _buildMainMenu({StateSetter? setModalState}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1384,6 +1507,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildSpeedMenu() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1417,6 +1541,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildSpeedMenuWithBack(VoidCallback onBack,
       {StateSetter? setModalState}) {
     return Column(
@@ -1455,6 +1580,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildQualityMenu() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1465,6 +1591,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildQualityMenuWithBack(VoidCallback onBack,
       {StateSetter? setModalState}) {
     return Column(
@@ -1477,6 +1604,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildSubtitlesMenu() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1506,6 +1634,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ],
     );
   }
+
   Widget _buildSubtitlesMenuWithBack(VoidCallback onBack,
       {StateSetter? setModalState}) {
     return Column(
@@ -1533,13 +1662,18 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                       mediaService.currentSubtitleTrackIndex == entry.key,
                   onTap: () async {
                     await mediaService.setSubtitleTrack(entry.key);
-                    setState(() {});
+                    if (setModalState != null) {
+                      setModalState(() {});
+                    } else {
+                      setState(() {});
+                    }
                   },
                 ),
               ),
       ],
     );
   }
+
   // Default subtitle style values
   static const double _defaultFontSize = 18.0;
   static const FontWeight _defaultFontWeight = FontWeight.bold;
@@ -1552,6 +1686,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
     await mediaService.setSubtitleColor(_defaultColor);
     setState(() {});
   }
+
   Widget _buildSubtitlesStyleMenu() {
     final sizes = <String, double>{
       'Small (18px)': 18,
@@ -1728,6 +1863,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
           return const SizedBox.shrink();
       }
     }
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1738,6 +1874,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSubtitlesStyleMenuWithBack(VoidCallback onBack,
       {StateSetter? setModalState}) {
     final sizes = <String, double>{
@@ -1780,8 +1917,15 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
           _buildStyleOption(
             'Font Size',
             icon: Icons.text_fields,
-            onTap: () => setState(
-                () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.size),
+            onTap: () {
+              if (setModalState != null) {
+                setModalState(
+                    () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.size);
+              } else {
+                setState(
+                    () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.size);
+              }
+            },
             trailing: Text(
               '${style.fontSize.toInt()}px',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -1790,8 +1934,15 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
           _buildStyleOption(
             'Font Weight',
             icon: Icons.line_weight,
-            onTap: () => setState(
-                () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.weight),
+            onTap: () {
+              if (setModalState != null) {
+                setModalState(() =>
+                    _currentSubtitleStyleMenu = _SubtitleStyleMenu.weight);
+              } else {
+                setState(() =>
+                    _currentSubtitleStyleMenu = _SubtitleStyleMenu.weight);
+              }
+            },
             trailing: Text(
               style.fontWeight.toString().split('.').last,
               style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -1842,16 +1993,11 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
           _buildStyleOption(
             'Reset to Default',
             icon: Icons.restart_alt,
-            onTap: () {
+            onTap: () async {
+              await _resetToDefaultStyle();
               if (setModalState != null) {
-                setModalState(() {
-                  _currentSubtitleStyleMenu = _SubtitleStyleMenu.main;
-                });
-              } else {
-                setState(
-                    () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.main);
+                setModalState(() {});
               }
-              _resetToDefaultStyle();
             },
           ),
         ],
@@ -1859,19 +2005,30 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
     }
     // Build the specific style submenu based on current selection
     Widget buildSubmenu() {
+      void goBackToMain() {
+        if (setModalState != null) {
+          setModalState(
+              () => _currentSubtitleStyleMenu = _SubtitleStyleMenu.main);
+        } else {
+          setState(() => _currentSubtitleStyleMenu = _SubtitleStyleMenu.main);
+        }
+      }
+
       switch (_currentSubtitleStyleMenu) {
         case _SubtitleStyleMenu.size:
           return Column(
             children: [
-              _buildSubMenuHeader('Font Size',
-                  onBack: () => setState(() =>
-                      _currentSubtitleStyleMenu = _SubtitleStyleMenu.main)),
+              _buildSubMenuHeader('Font Size', onBack: goBackToMain),
               ...sizes.entries.map((e) => _buildStyleOption(
                     e.key,
                     selected: (style.fontSize - e.value).abs() < 0.1,
                     onTap: () async {
                       await mediaService.setSubtitleFontSize(e.value);
-                      setState(() {});
+                      if (setModalState != null) {
+                        setModalState(() {});
+                      } else {
+                        setState(() {});
+                      }
                     },
                   )),
             ],
@@ -1879,15 +2036,17 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
         case _SubtitleStyleMenu.weight:
           return Column(
             children: [
-              _buildSubMenuHeader('Font Weight',
-                  onBack: () => setState(() =>
-                      _currentSubtitleStyleMenu = _SubtitleStyleMenu.main)),
+              _buildSubMenuHeader('Font Weight', onBack: goBackToMain),
               ...weights.entries.map((e) => _buildStyleOption(
                     e.key,
                     selected: style.fontWeight == e.value,
                     onTap: () async {
                       await mediaService.setSubtitleFontWeight(e.value, e.key);
-                      setState(() {});
+                      if (setModalState != null) {
+                        setModalState(() {});
+                      } else {
+                        setState(() {});
+                      }
                     },
                   )),
             ],
@@ -1895,15 +2054,17 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
         case _SubtitleStyleMenu.opacity:
           return Column(
             children: [
-              _buildSubMenuHeader('Background Opacity',
-                  onBack: () => setState(() =>
-                      _currentSubtitleStyleMenu = _SubtitleStyleMenu.main)),
+              _buildSubMenuHeader('Background Opacity', onBack: goBackToMain),
               ...opacities.entries.map((e) => _buildStyleOption(
                     e.key,
                     selected: (style.backgroundOpacity - e.value).abs() < 0.01,
                     onTap: () async {
                       await mediaService.setSubtitleBackgroundOpacity(e.value);
-                      setState(() {});
+                      if (setModalState != null) {
+                        setModalState(() {});
+                      } else {
+                        setState(() {});
+                      }
                     },
                   )),
             ],
@@ -1911,15 +2072,17 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
         case _SubtitleStyleMenu.color:
           return Column(
             children: [
-              _buildSubMenuHeader('Text Color',
-                  onBack: () => setState(() =>
-                      _currentSubtitleStyleMenu = _SubtitleStyleMenu.main)),
+              _buildSubMenuHeader('Text Color', onBack: goBackToMain),
               ...colors.entries.map((e) => _buildStyleOption(
                     e.key,
                     selected: style.color == e.value,
                     onTap: () async {
                       await mediaService.setSubtitleColor(e.value);
-                      setState(() {});
+                      if (setModalState != null) {
+                        setModalState(() {});
+                      } else {
+                        setState(() {});
+                      }
                     },
                     trailing: Container(
                       width: 14,
@@ -1937,6 +2100,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
           return const SizedBox.shrink();
       }
     }
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1947,6 +2111,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildStyleOption(String label,
       {bool? selected,
       required VoidCallback onTap,
@@ -1994,6 +2159,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSubMenuHeader(
     String title, {
     VoidCallback? onBack,
@@ -2024,6 +2190,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSettingsMenuItem({
     required IconData icon,
     required String title,
@@ -2060,6 +2227,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSpeedOption(double speed, {StateSetter? setModalState}) {
     return Material(
       color: Colors.transparent,
@@ -2067,7 +2235,9 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
         onTap: () {
           mediaService.setSpeed(speed);
           if (setModalState != null) {
-            setModalState(() {});
+            setModalState(() => _playbackSpeed = speed);
+          } else {
+            setState(() => _playbackSpeed = speed);
           }
         },
         child: Padding(
@@ -2116,6 +2286,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildQualityOption(VideoQuality quality,
       {StateSetter? setModalState}) {
     return Material(
@@ -2154,6 +2325,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildSubtitleOption(String label,
       {bool isSelected = false, VoidCallback? onTap}) {
     return Material(
@@ -2187,6 +2359,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   Widget _buildControlButton(IconData icon, VoidCallback onPressed,
       {double size = 24}) {
     return IconButton(
@@ -2196,6 +2369,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       onPressed: onPressed,
     );
   }
+
   Widget _buildVolumeButtonAndSlider() {
     return MouseRegion(
       onEnter: (_) => setState(() => _showVolumeSlider = true),
@@ -2271,6 +2445,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       ),
     );
   }
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = duration.inHours;
@@ -2282,6 +2457,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       return '${twoDigits(minutes)}:${twoDigits(seconds)}';
     }
   }
+
   void _toggleSettings() {
     final isMobile = !widget.isDesktop;
     if (isMobile) {
@@ -2310,18 +2486,20 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
       });
     }
   }
+
   void _toggleFullscreen() {
     if (widget.isFullscreen) {
-      context.pop();
+      // Exit fullscreen by popping the overlay route
+      exitFullscreen(context);
     } else {
-      context.push(
-        '/fullscreen-player',
-        extra: {
-          'video': widget.video,
-          'isDesktop': widget.isDesktop,
-          'statekey': widget.key,
-        },
+      // Enter fullscreen by pushing an overlay route
+      enterFullscreen(
+        context,
+        video: widget.video!,
+        isDesktop: widget.isDesktop,
+        thumbnailSprite: widget.thumbnailSprite,
+        pipAvailable: widget.pipAvailable,
       );
     }
   }
-    }
+}

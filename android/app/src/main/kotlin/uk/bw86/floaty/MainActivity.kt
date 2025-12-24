@@ -1,12 +1,63 @@
 package uk.bw86.floaty
 
-import io.flutter.embedding.android.FlutterActivity
+import android.content.Context
+import android.content.res.Configuration
+import android.os.Bundle
+import androidx.annotation.NonNull
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugins.GeneratedPluginRegistrant
+import com.ryanheise.audioservice.AudioServicePlugin
+import cl.puntito.simple_pip_mode.PipCallbackHelper
+import uz.shs.better_player_plus.BetterPlayerPlugin
 
-class MainActivity : FlutterActivity() {
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        GeneratedPluginRegistrant.registerWith(flutterEngine)
+class MainActivity : FlutterFragmentActivity() {
+
+    // Lazy initialize the PIP helper to prevent lateinit crashes
+    private val pipCallbackHelper: PipCallbackHelper by lazy { PipCallbackHelper() }
+
+    private var flutterEngine: FlutterEngine? = null
+
+    /**
+     * Provide the shared AudioService engine
+     */
+    override fun provideFlutterEngine(@NonNull context: Context): FlutterEngine {
+        val engine = AudioServicePlugin.getFlutterEngine(context)
+        flutterEngine = engine
+
+        // Initialize PIP helper safely
+        pipCallbackHelper.configureFlutterEngine(engine)
+
+        return engine
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Ensure engine exists before super.onCreate()
+        if (flutterEngine == null) {
+            flutterEngine = AudioServicePlugin.getFlutterEngine(this)
+            pipCallbackHelper.configureFlutterEngine(flutterEngine!!)
+        }
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun getCachedEngineId(): String? {
+        return AudioServicePlugin.getFlutterEngineId()
+    }
+
+    override fun shouldDestroyEngineWithHost(): Boolean {
+        // Keep the shared engine alive even if the Activity is destroyed
+        return false
+    }
+
+    /**
+     * Picture-in-Picture mode callback.
+     * Safe because pipCallbackHelper is lazy-initialized.
+     */
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipCallbackHelper.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        BetterPlayerPlugin.onPictureInPictureModeChanged(isInPictureInPictureMode)
     }
 }

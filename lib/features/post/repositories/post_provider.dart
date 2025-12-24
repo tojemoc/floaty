@@ -2,6 +2,7 @@ import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
 import 'dart:convert';
 import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dart';
@@ -419,9 +420,8 @@ class RateLimitNotifier extends StateNotifier<RatelimitState> {
 }
 
 final ratelimitProvider =
-    StateNotifierProvider<RateLimitNotifier, RatelimitState>((ref) {
-  return RateLimitNotifier();
-});
+    StateNotifierProvider<RateLimitNotifier, RatelimitState>(
+        (ref) => RateLimitNotifier());
 
 class DownloadOption {
   final String url;

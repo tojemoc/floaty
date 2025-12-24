@@ -3,17 +3,18 @@ import 'package:dio/dio.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'dart:async';
 import 'package:floaty/features/api/repositories/fpapi.dart';
+import 'package:floaty/features/authentication/services/oauth2_service.dart';
+import 'package:floaty/features/player/components/custom_player/pip_overlay.dart';
 import 'package:floaty/features/player/models/seekbar_chapter.dart';
-import 'package:floaty/features/router/views/root_layout.dart';
 import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:logging/logging.dart';
@@ -22,27 +23,31 @@ import 'windows_media_controls.dart';
 import '../models/video_quality.dart';
 import 'package:floaty/features/player/models/subtitle_style.dart';
 import 'package:floaty/settings.dart';
-import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:better_player_plus/better_player_plus.dart';
+
 enum PlayerType {
   mediaKit,
   betterPlayer,
 }
+
 enum MediaType {
   audio,
   video,
   image,
 }
+
 enum MediaPlayerState {
   none,
   main,
   mini,
   pip,
 }
+
 final mediaPlayerServiceProvider =
-    StateNotifierProvider<MediaPlayerService, MediaPlayerState>(
-        (ref) => MediaPlayerService());
-class MediaPlayerService extends StateNotifier<MediaPlayerState> {
+    NotifierProvider<MediaPlayerService, MediaPlayerState>(
+        MediaPlayerService.new);
+
+class MediaPlayerService extends Notifier<MediaPlayerState> {
   PackageInfo? packageInfo;
   String userAgent = 'FloatyClient/error, CFNetwork';
   static final MediaPlayerService _instance = MediaPlayerService._internal();
@@ -56,7 +61,8 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   BetterPlayerController? betterPlayerController;
   FloatyAudioHandler? audioHandler;
   WindowsMediaControls? windowsControls;
-  late final Logger _log;
+  final Logger _log = Logger('MediaPlayerService');
+  bool _initialized = false;
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -89,6 +95,17 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   String? _whitelabelName;
   WhiteLabel? _whitelabel;
   late SimplePip _simplePip;
+  bool _betterPlayerPipActive = false;
+  bool get betterPlayerPipActive => _betterPlayerPipActive;
+  void setBetterPlayerPipActive() {
+    _betterPlayerPipActive = true;
+  }
+
+  void clearBetterPlayerPipActive() {
+    _betterPlayerPipActive = false;
+    changeState(MediaPlayerState.main);
+  }
+
   final StreamController<bool> _playingController =
       StreamController<bool>.broadcast();
   final StreamController<Duration> _positionController =
@@ -113,6 +130,10 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       StreamController<SubtitleStyle>.broadcast();
   Stream<SubtitleStyle> get subtitleStyleStream =>
       _subtitleStyleController.stream;
+  // Stream to signal that PiP has exited (used by UI to pop overlays)
+  final StreamController<bool> _pipExitController =
+      StreamController<bool>.broadcast();
+  Stream<bool> get pipExitStream => _pipExitController.stream;
   late SubtitleStyle _subtitleStyle = SubtitleStyle.defaultStyle();
   SubtitleStyle get currentSubtitleStyle => _subtitleStyle;
   // Getters
@@ -135,6 +156,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   String? get currentArtist => _currentArtist;
   String? get currentArtistImage => _currentArtistImage;
   String? get currentThumbnailUrl => _currentThumbnailUrl;
+  String? get currentMediaUrl => _currentMediaUrl;
   ImageModel? get currentTimelineSprite => _currentTimelineSprite;
   String? get currentPostId => _currentPostId;
   bool get currentLive => _live;
@@ -156,12 +178,24 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
   factory MediaPlayerService() {
     return _instance;
   }
-  MediaPlayerService._internal() : super(MediaPlayerState.none) {
-    _log = Logger('MediaPlayerService');
-    _log.info('Initializing MediaPlayerService...');
+
+  @override
+  MediaPlayerState build() {
+    _log.info('Initializing MediaPlayerService via Notifier build...');
+    _init(); // Initialize
+    return MediaPlayerState.none;
+  }
+
+  MediaPlayerService._internal() {
+    _log.info('Initializing MediaPlayerService via singleton...');
     _init(); // Initialize
   }
   Future<void> _init() async {
+    if (_initialized) {
+      _log.info('MediaPlayerService: _init already called, skipping');
+      return;
+    }
+    _initialized = true;
     packageInfo = await PackageInfo.fromPlatform();
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
@@ -181,6 +215,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
             : PlayerType.mediaKit,
       );
     }
+    print('Selected player type: $selectedPlayerType');
     await loadPlayer(selectedPlayerType ??
         (Platform.isAndroid || Platform.isIOS
             ? PlayerType.betterPlayer
@@ -210,7 +245,9 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     _subtitleStyleController.add(_subtitleStyle);
   }
+
   Future<void> loadPlayer(PlayerType playerType) async {
+    print('Loading player: $playerType');
     if (playerType == loadedPlayerType) return;
     if (loadedPlayerType != null) {
       switch (loadedPlayerType) {
@@ -247,6 +284,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     _log.info('MediaPlayerService initialization completed successfully');
   }
+
   void _setupPlayerListeners() {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
@@ -421,6 +459,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       });
     }
   }
+
   Future pipfalse() async {
     _pip = false;
     windowManager.setSize(_restoreSize ?? Size(480, 270));
@@ -429,6 +468,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     windowManager.center();
     windowManager.setTitleBarStyle(TitleBarStyle.normal);
   }
+
   Future<void> _startSession() async {
     Logger.root.info('starting audio service...');
     // Initialize media player
@@ -450,6 +490,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     Logger.root.info('audio player initialized!');
   }
+
   Future<dynamic> setSource(
     String whitelabelName,
     String url,
@@ -469,13 +510,23 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     ImageModel? timelineSprite,
     List<SeekbarChapter>? chapters,
   }) async {
+    print('MediaPlayerService: setSource called with URL: $url');
+    print('MediaPlayerService: title: $title');
     dynamic controller;
     _log.info('Setting source: $url');
     // await _ensureInitialized();
     // Don't reinitialize if the URL hasn't changed
     if (_currentMediaUrl == url) {
       _log.info('Source URL unchanged, skipping initialization');
-      return;
+      // Return the existing controller so the widget can use it
+      switch (loadedPlayerType) {
+        case PlayerType.mediaKit:
+          return _videoController;
+        case PlayerType.betterPlayer:
+          return _betterPlayerController;
+        default:
+          return null;
+      }
     }
     try {
       _log.info('Updating media source...');
@@ -514,12 +565,13 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           );
           _currentQuality = selectedQuality; // Just use the URL directly
         } else {
-          // Check for 1080p quality
+          // Check for 4K quality
           VideoQuality? defaultQuality = qualities.firstWhere(
-              (quality) => quality.label == '1080p',
-              orElse: () => qualities
-                  .first // Fallback to the first quality if 1080p doesn't exist
-              );
+            (quality) => quality.label == '4K',
+            orElse: () => qualities.firstWhere(
+                (quality) => quality.label == '1080p',
+                orElse: () => qualities.first),
+          );
           _currentQuality = defaultQuality;
         }
       }
@@ -536,15 +588,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           [];
       _whitelabel =
           whitelabels.getWhitelabel(_whitelabelName ?? 'Unknown Whitelabel');
-      _simplePip = SimplePip(
-        onPipExited: () {
-          if (_live) {
-            rootLayoutKey.currentContext?.go('/live/$currentPostId');
-          } else {
-            rootLayoutKey.currentContext?.go('/post/$currentPostId');
-          }
-        },
-      );
+      // SimplePip instance is now created in the overlay with proper exit callback
       late PlayerType player;
       final playerTypeString = await Settings().getKey('player_backend');
       if (playerTypeString.isEmpty) {
@@ -577,9 +621,10 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
             httpHeaders: headers ??
                 {
                   'User-Agent': userAgent,
-                  'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
                   'Referer': 'https://www.${_whitelabel?.domain}/',
                   'Origin': 'https://www.${_whitelabel?.domain}',
+                  ...await OAuth2Service.instance
+                      .getAuthHeaders(_whitelabel!.friendlyName),
                 },
             start: start,
             extras: {
@@ -604,9 +649,16 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
                 autoPlay: true,
                 autoDetectFullscreenDeviceOrientation: true,
                 autoDetectFullscreenAspectRatio: true,
-                autoDispose: true,
+                autoDispose: false, // Prevent auto-disposal during navigation
                 startAt: start,
                 handleLifecycle: false,
+                useRootNavigator: false,
+                routePageBuilder: (context, animation1, animation2, child) {
+                  return PiPOverlayPage(
+                    video: child,
+                    mediaService: this,
+                  );
+                },
               ),
               betterPlayerDataSource: BetterPlayerDataSource(
                 BetterPlayerDataSourceType.network,
@@ -615,10 +667,10 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
                 headers: headers ??
                     {
                       'User-Agent': userAgent,
-                      'Cookie':
-                          await settings.getAuthTokenFromCookieJar() ?? '',
                       'Referer': 'https://www.${_whitelabel?.domain}/',
                       'Origin': 'https://www.${_whitelabel?.domain}',
+                      ...await OAuth2Service.instance
+                          .getAuthHeaders(_whitelabel!.friendlyName),
                     },
                 resolutions: qualities?.asMap().map((index, quality) =>
                         MapEntry(quality.label, quality.url)) ??
@@ -642,6 +694,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       rethrow;
     }
   }
+
   Future<void> _updateMediaMetadata(
     String? title,
     String? artist,
@@ -690,19 +743,63 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           _currentPostId ?? '');
     }
   }
-  Future<void> enterpip() async {
+
+  Future<void> enterpip({Function? onPipExited, Function? onPipEntered}) async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
-        _simplePip.enterPipMode(aspectRatio: (
-          mediaKit.state.width ?? 16,
-          mediaKit.state.height ?? 9
-        ));
+        if (Platform.isAndroid) {
+          _simplePip = SimplePip(
+            onPipEntered: () {
+              print('Entered PiP mode');
+              if (onPipEntered != null) {
+                print('Calling onPipEntered callback');
+                onPipEntered.call();
+              }
+            },
+            onPipExited: () {
+              print('Exited PiP mode');
+              print(onPipExited);
+              if (onPipExited != null) {
+                print('Calling onPipExited callback');
+                onPipExited.call();
+              }
+              // Notify listeners that PiP exited
+              try {
+                print('Notifying PiP exit listeners');
+                print(_pipExitController.hasListener);
+                print(_pipExitController.isClosed);
+                print(_pipExitController);
+                _pipExitController.add(true);
+              } catch (_) {
+                print('No listeners for PiP exit stream');
+                print(_);
+              }
+            },
+          );
+          _simplePip.enterPipMode(aspectRatio: (
+            mediaKit.state.width ?? 16,
+            mediaKit.state.height ?? 9
+          ));
+        } else if (!Platform.isIOS) {
+          changeState(MediaPlayerState.pip);
+        }
         break;
       case PlayerType.betterPlayer:
+        _betterPlayerPipActive = true;
         _betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
         break;
     }
   }
+
+  /// Called when app resumes and BetterPlayer was in PiP mode
+  /// Note: The overlay handles popping itself via WidgetsBindingObserver
+  void handleBetterPlayerPipExit() {
+    if (_betterPlayerPipActive) {
+      _betterPlayerPipActive = false;
+      changeState(MediaPlayerState.main);
+    }
+  }
+
   Future<void> play() async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -724,6 +821,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         }
     }
   }
+
   Future<void> pause() async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -745,6 +843,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         }
     }
   }
+
   Future<void> playpause() async {
     if (_isPlaying) {
       await pause();
@@ -752,6 +851,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       await play();
     }
   }
+
   Future<void> seek(Duration position) async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -771,6 +871,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         }
     }
   }
+
   Future<void> setVolume(double volume) async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -795,6 +896,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         }
     }
   }
+
   Future<void> changeQuality(VideoQuality quality,
       {Map<String, String>? headers}) async {
     if (!_availableQualities.contains(quality)) return;
@@ -807,7 +909,8 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
           httpHeaders: headers ??
               {
                 'User-Agent': userAgent,
-                'Cookie': await settings.getAuthTokenFromCookieJar() ?? '',
+                ...await OAuth2Service.instance
+                    .getAuthHeaders(_whitelabel!.friendlyName),
               },
           start: position,
         );
@@ -821,6 +924,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     _currentQuality = quality;
     settings.setKey('preferred_quality', quality.label);
   }
+
   Future<void> changeState(MediaPlayerState newState) async {
     if (state == newState) {
       return;
@@ -882,6 +986,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         break;
     }
   }
+
   Future<void> setSpeed(double speed) async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -893,6 +998,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     _playbackSpeed = speed;
   }
+
   Future<bool> toggleSubtitles({bool? enabled}) async {
     _subtitlesEnabled = enabled ?? !_subtitlesEnabled;
     try {
@@ -909,6 +1015,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     return _subtitlesEnabled;
   }
+
   Future<void> setSubtitleTrack(int index) async {
     if (index == -1) {
       await toggleSubtitles(enabled: false);
@@ -941,28 +1048,32 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       _log.severe('Failed to load subtitles: $e', st);
     }
   }
+
   // Style helpers & setters
   Future<void> setSubtitleFontSize(double size) async {
     _subtitleStyle = _subtitleStyle.copyWith(fontSize: size);
     _subtitleStyleController.add(_subtitleStyle);
     await settings.setDynamic('subtitle_style_size', size);
   }
+
   Future<void> setSubtitleFontWeight(FontWeight weight, String label) async {
     _subtitleStyle = _subtitleStyle.copyWith(fontWeight: weight);
     _subtitleStyleController.add(_subtitleStyle);
     await settings.setKey('subtitle_style_weight', label);
   }
+
   Future<void> setSubtitleBackgroundOpacity(double opacity) async {
     _subtitleStyle = _subtitleStyle.copyWith(backgroundOpacity: opacity);
     _subtitleStyleController.add(_subtitleStyle);
     await settings.setDynamic('subtitle_style_bg_opacity', opacity);
   }
+
   Future<void> setSubtitleColor(Color color) async {
     _subtitleStyle = _subtitleStyle.copyWith(color: color);
     _subtitleStyleController.add(_subtitleStyle);
     await settings.setKey('subtitle_style_color', _hexFromColor(color));
   }
-  @override
+
   Future<void> dispose() async {
     switch (loadedPlayerType!) {
       case PlayerType.betterPlayer:
@@ -992,8 +1103,8 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     }
     await _subtitleTextController.close();
     await _subtitleStyleController.close();
-    super.dispose();
   }
+
   Future<void> stop() async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
@@ -1004,6 +1115,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
         break;
     }
   }
+
   List<SeekbarChapter> parseSeekbarChapters(String input) {
     final List<SeekbarChapter> chapters = [];
     final timestampRegex = RegExp(r"(?:(\d{1,2}):)?(\d{1,2}):(\d{2})");
@@ -1017,6 +1129,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
       final se = int.tryParse(sStr) ?? 0;
       return Duration(hours: h, minutes: mi, seconds: se);
     }
+
     final matches = timestampRegex.allMatches(input).toList();
     for (var i = 0; i < matches.length; i++) {
       final m = matches[i];
@@ -1044,6 +1157,7 @@ class MediaPlayerService extends StateNotifier<MediaPlayerState> {
     return out;
   }
 }
+
 // Simple WebVTT cue
 class _VttCue {
   final Duration start;
@@ -1051,6 +1165,7 @@ class _VttCue {
   final String text;
   _VttCue(this.start, this.end, this.text);
 }
+
 extension on MediaPlayerService {
   FontWeight _fontWeightFromString(String s) {
     switch (s.toLowerCase()) {
@@ -1068,9 +1183,11 @@ extension on MediaPlayerService {
         return FontWeight.w600;
     }
   }
+
   String _hexFromColor(Color c) {
     return '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
+
   Color _colorFromHex(String hex) {
     String h = hex.replaceAll('#', '');
     if (h.length == 6) {
@@ -1078,6 +1195,7 @@ extension on MediaPlayerService {
     }
     return Color(int.parse(h, radix: 16));
   }
+
   List<_VttCue> _parseWebVtt(String content) {
     final lines = content.replaceAll('\r\n', '\n').split('\n');
     final cues = <_VttCue>[];
@@ -1127,6 +1245,7 @@ extension on MediaPlayerService {
     }
     return cues;
   }
+
   Duration? _parseTimestamp(String s) {
     // 00:00:01.000 or 00:01.000
     final ts = s.trim();
@@ -1146,6 +1265,7 @@ extension on MediaPlayerService {
     final millis = (seconds * 1000).round();
     return Duration(hours: hours, minutes: minutes, milliseconds: millis);
   }
+
   String? _activeTextFor(Duration position) {
     final ms = position.inMilliseconds;
     for (final c in _currentCues) {

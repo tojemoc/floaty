@@ -11,14 +11,6 @@ void unifiedConnectionListener(
         {'connected': false, 'color': 'error', 'message': 'Connection Error'});
   });
 
-  socket.onConnectTimeout((e) {
-    handler({
-      'connected': false,
-      'color': 'error',
-      'message': 'Connection Timeout'
-    });
-  });
-
   socket.onDisconnect((e) {
     handler({'connected': false, 'color': 'error', 'message': 'Disconnected'});
   });
@@ -32,7 +24,7 @@ void unifiedConnectionListener(
         {'connected': false, 'color': 'error', 'message': 'Reconnect Error'});
   });
 
-  socket.onReconnecting((_) {
+  socket.onReconnectAttempt((_) {
     handler(
         {'connected': false, 'color': 'warning', 'message': 'Reconnecting...'});
   });

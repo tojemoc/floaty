@@ -10,10 +10,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
-import 'package:floaty/features/player/components/mini_player_widget.dart';
+import 'package:floaty/features/player/components/custom_player/mini_player_overlay.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
-import 'package:go_router/go_router.dart';
+// No router import here — RootLayout is a plain shell widget.
 
+// RootLayout is a plain shell widget. A single global key is used so
+// other modules can access the shell state (setAppBar, etc.). Using a
+// single global key is safe because only one RootLayout instance is
+// present at a time when wrapped by `MaterialApp.builder`.
 final GlobalKey<RootLayoutState> rootLayoutKey = GlobalKey<RootLayoutState>();
 
 class RootLayout extends ConsumerStatefulWidget {
@@ -28,6 +32,8 @@ class RootLayoutState extends ConsumerState<RootLayout>
     with SingleTickerProviderStateMixin {
   UserSelfV3Response? user;
   late bool isSmallScreen;
+  bool? _lastSidebarCollapsed;
+  bool _textGuardInitialized = false;
   @override
   void initState() {
     super.initState();
@@ -76,16 +82,30 @@ class RootLayoutState extends ConsumerState<RootLayout>
     final isSidebarCollapsed = isSmallScreen ? false : rootState.isCollapsed;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!isSidebarCollapsed) {
-        if (!rootState.showText) {
-          if (mounted) {
+      if (!mounted) return;
+      // Only update `showText` when the collapsed state actually changes
+      // to avoid causing a rebuild loop.
+      final collapsed = isSidebarCollapsed;
+      if (!_textGuardInitialized || _lastSidebarCollapsed != collapsed) {
+        _textGuardInitialized = true;
+        _lastSidebarCollapsed = collapsed;
+        if (!collapsed) {
+          if (!rootState.showText) {
             ref.read(rootProvider.notifier).setText(true);
           }
+        } else {
+          if (rootState.showText) {
+            ref.read(rootProvider.notifier).setText(false);
+          }
         }
-      } else {
-        ref.read(rootProvider.notifier).setText(false);
       }
     });
+
+    // If this RootLayout was activated with an `initial` inner route (see
+    // router.go), forward that route into the nested child navigator so the
+    // shell opens directly at the desired page instead of recreating the
+    // shell for the inner route.
+    // no-op: RootLayout is a passive shell that displays `widget.child`.
 
     Widget buildSidebarContent() {
       return Column(
@@ -127,17 +147,17 @@ class RootLayoutState extends ConsumerState<RootLayout>
                   if (rootState.isLoading)
                     const CircularProgressIndicator()
                   else
-                    ...rootState.creators
-                        .map((creatorResponse) {
-                          return SidebarChannelItem(
-                              id: creatorResponse.id ?? '',
-                              response: creatorResponse,
-                              isSidebarCollapsed: isSidebarCollapsed,
-                              isSmallScreen: isSmallScreen,
-                              showText: rootState.showText,
-                            );
-                          },
-                        ),
+                    ...rootState.creators.map(
+                      (creatorResponse) {
+                        return SidebarChannelItem(
+                          id: creatorResponse.id ?? '',
+                          response: creatorResponse,
+                          isSidebarCollapsed: isSidebarCollapsed,
+                          isSmallScreen: isSmallScreen,
+                          showText: rootState.showText,
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
@@ -157,11 +177,12 @@ class RootLayoutState extends ConsumerState<RootLayout>
                       whitelabels: whitelabels.getWhitelabels(),
                       onSwitch: (whitelabel) {
                         ref.read(rootProvider.notifier).loadsidebar();
-                        final currentPath = GoRouterState.of(context).uri.path;
+                        final currentPath =
+                            ModalRoute.of(context)?.settings.name ?? '/';
                         if (currentPath.startsWith('/post/') ||
                             currentPath.startsWith('/channel/')) {
                           // If current route is /post or /channel, go to home
-                          context.pushReplacement(
+                          Navigator.of(context).pushReplacementNamed(
                               '/home?time=${DateTime.now().millisecondsSinceEpoch}');
                           ref
                               .read(mediaPlayerServiceProvider.notifier)
@@ -169,8 +190,8 @@ class RootLayoutState extends ConsumerState<RootLayout>
                         } else {
                           // Otherwise, refresh the current page
                           final location =
-                              GoRouterState.of(context).uri.toString();
-                          context.pushReplacement(
+                              ModalRoute.of(context)?.settings.name ?? '/';
+                          Navigator.of(context).pushReplacementNamed(
                               '$location?time=${DateTime.now().millisecondsSinceEpoch}');
                           ref
                               .read(mediaPlayerServiceProvider.notifier)
@@ -248,14 +269,22 @@ class RootLayoutState extends ConsumerState<RootLayout>
         surfaceTintColor: colorScheme.surfaceContainer,
         title: rootState.appBarTitle,
         actions: rootState.appBarActions,
-        leading: isSmallScreen
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () {
-                  scaffoldKey.currentState?.openDrawer();
-                },
-              )
-            : null,
+        leading: rootState.appBarLeading ??
+            (isSmallScreen
+                ? IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () {
+                      scaffoldKey.currentState?.openDrawer();
+                    },
+                  )
+                : (Navigator.of(context).canPop()
+                    ? IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      )
+                    : null)),
       ),
       drawer: isSmallScreen ? sidebar : null,
       body: SafeArea(
@@ -265,26 +294,19 @@ class RootLayoutState extends ConsumerState<RootLayout>
             Expanded(
               child: Stack(
                 children: [
+                  // Plain shell content — `widget.child` is provided by the
+                  // router and is displayed inside the persistent RootLayout.
                   widget.child,
                   Consumer(
                     builder: (context, ref, _) {
-                      final mediaService =
-                          ref.watch(mediaPlayerServiceProvider.notifier);
                       final mediaState = ref.watch(mediaPlayerServiceProvider);
 
                       if (mediaState == MediaPlayerState.mini) {
-                        return Positioned(
+                        return const Positioned(
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          child: MiniPlayerWidget(
-                            title: mediaService.currentTitle ?? '',
-                            artist: mediaService.currentArtist ?? '',
-                            postId: mediaService.currentPostId ?? '',
-                            live: mediaService.currentLive,
-                            thumbnailUrl: mediaService.currentThumbnailUrl,
-                            videoController: mediaService.videoController,
-                          ),
+                          child: MiniPlayerOverlay(),
                         );
                       }
                       return const SizedBox.shrink();

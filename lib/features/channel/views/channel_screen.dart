@@ -28,13 +28,12 @@ class ChannelScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final channelScreenStateNotifier =
-        ref.watch(channelScreenProvider.notifier);
+    final channelScreenNotifier = ref.watch(channelScreenProvider.notifier);
 
     return ChannelScreenStateWrapper(
       channelName: channelName,
       subName: subName,
-      channelScreenStateNotifier: channelScreenStateNotifier,
+      channelScreenNotifier: channelScreenNotifier,
     );
   }
 }
@@ -42,13 +41,13 @@ class ChannelScreen extends ConsumerWidget {
 class ChannelScreenStateWrapper extends ConsumerStatefulWidget {
   final String channelName;
   final String? subName;
-  final ChannelScreenStateNotifier channelScreenStateNotifier;
+  final ChannelScreenStateNotifier channelScreenNotifier;
 
   const ChannelScreenStateWrapper({
     super.key,
     required this.channelName,
     this.subName,
-    required this.channelScreenStateNotifier,
+    required this.channelScreenNotifier,
   });
 
   @override
@@ -88,7 +87,7 @@ class ChannelScreenStateWrapperState
         curve: Curves.easeInOut,
       );
     }
-    widget.channelScreenStateNotifier.toggleSearch();
+    widget.channelScreenNotifier.toggleSearch();
   }
 
   void _handleFilterChange(
@@ -1063,7 +1062,7 @@ class ChannelScreenStateWrapperState
         if (index == -1) {
           _toggleSearch();
         } else {
-          widget.channelScreenStateNotifier.updateSelectedIndex(index);
+          widget.channelScreenNotifier.updateSelectedIndex(index);
         }
       },
       child: AnimatedContainer(

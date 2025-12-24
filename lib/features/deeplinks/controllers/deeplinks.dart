@@ -46,7 +46,7 @@ class DeepLinkService {
 
     // Extract the path, handling both http:// and floaty:// schemes
     String path = uri.path;
-    
+
     // If the URL is a floaty:// URL, we might need to handle it differently
     if (uri.scheme == 'floaty' && uri.host.isNotEmpty) {
       // Handle floaty://host/path as /path

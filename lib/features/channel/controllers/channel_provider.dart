@@ -45,8 +45,11 @@ class ChannelScreenState {
   }
 }
 
-class ChannelScreenStateNotifier extends StateNotifier<ChannelScreenState> {
-  ChannelScreenStateNotifier() : super(const ChannelScreenState());
+class ChannelScreenStateNotifier extends Notifier<ChannelScreenState> {
+  @override
+  ChannelScreenState build() {
+    return const ChannelScreenState();
+  }
 
   void updateSelectedIndex(int index) {
     state = state.copyWith(selectedIndex: index);
@@ -83,7 +86,7 @@ class ChannelScreenStateNotifier extends StateNotifier<ChannelScreenState> {
   }
 }
 
-final channelScreenProvider = StateNotifierProvider.autoDispose<
+final channelScreenProvider = NotifierProvider.autoDispose<
     ChannelScreenStateNotifier, ChannelScreenState>(
-  (ref) => ChannelScreenStateNotifier(),
+  ChannelScreenStateNotifier.new,
 );

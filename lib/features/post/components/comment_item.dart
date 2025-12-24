@@ -63,7 +63,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
 
   Future<void> _handleEditSubmit() async {
     if (_editController.text.trim().length >= 3 &&
-        _editController.text.trim().length <= 1500) {
+        _editController.text.trim().length <= 4500) {
       try {
         final editedComment = await fpApiRequests.editComment(
             (await whitelabels.getSelectedWhitelabel()).friendlyName,
@@ -106,7 +106,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
 
   void _handleReply() {
     if (_replyController.text.length >= 3 &&
-        _replyController.text.length <= 1500) {
+        _replyController.text.length <= 4500) {
       if (widget.onReply != null) {
         widget.onReply!(_replyController.text);
       }
@@ -314,7 +314,6 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                                                               .getSelectedWhitelabel())
                                                           .friendlyName,
                                                       widget.comment.id);
-
                                               if (res == 'OK') {
                                                 if (mounted) {
                                                   setState(() {
@@ -376,7 +375,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                             children: [
                               TextField(
                                 controller: _editController,
-                                maxLength: 1500,
+                                maxLength: 4500,
                                 maxLines: null,
                                 keyboardType: TextInputType.multiline,
                                 decoration: InputDecoration(
@@ -393,10 +392,10 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                                 child: Row(
                                   children: [
                                     Text(
-                                      '${_editController.text.length}/1500',
+                                      '${_editController.text.length}/4500',
                                       style: TextStyle(
                                         color:
-                                            _editController.text.length > 1500
+                                            _editController.text.length > 4500
                                                 ? Colors.red
                                                 : Colors.grey[400],
                                         fontWeight: FontWeight.bold,
@@ -417,7 +416,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                                                   _editController.text
                                                           .trim()
                                                           .length <=
-                                                      1500
+                                                      4500
                                               ? _handleEditSubmit
                                               : null,
                                       child: const Text('SAVE'),
@@ -588,7 +587,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                   TextField(
                     controller: _replyController,
                     focusNode: _focusNode,
-                    maxLength: 1500,
+                    maxLength: 4500,
                     maxLines: null,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
@@ -607,9 +606,9 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                     child: Row(
                       children: [
                         Text(
-                          '$_currentLength/1500',
+                          '$_currentLength/4500',
                           style: TextStyle(
-                            color: _currentLength > 1500
+                            color: _currentLength > 4500
                                 ? Colors.red
                                 : Colors.grey[400],
                             fontWeight: FontWeight.bold,
@@ -634,7 +633,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                         const SizedBox(width: 8),
                         TextButton(
                           onPressed:
-                              _currentLength >= 3 && _currentLength <= 1500
+                              _currentLength >= 3 && _currentLength <= 4500
                                   ? _handleReply
                                   : null,
                           style: TextButton.styleFrom(
@@ -645,7 +644,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
                             'REPLY',
                             style: TextStyle(
                               color:
-                                  _currentLength >= 3 && _currentLength <= 1500
+                                  _currentLength >= 3 && _currentLength <= 4500
                                       ? Colors.white
                                       : Colors.grey[600],
                               fontWeight: FontWeight.bold,

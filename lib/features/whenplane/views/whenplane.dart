@@ -6,6 +6,8 @@ import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dar
 import 'package:floaty/settings.dart';
 import 'package:floaty/shared/views/error_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
+import 'package:fwfh_url_launcher/fwfh_url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:simple_icons/simple_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -947,11 +949,12 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(children: [
-          Text(
+          HtmlWidget(
             pjsonData['isThereWan']['text'],
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14.0,
+            key: UniqueKey(),
+            factoryBuilder: () => _WhenplaneWidgetFactory(),
+            textStyle: TextStyle(
+              color: colorScheme.onSurface,
             ),
           ),
           if (pjsonData['isThereWan']['image'] != null)
@@ -1145,5 +1148,36 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
         ],
       ],
     );
+  }
+}
+
+class _WhenplaneWidgetFactory extends WidgetFactory with UrlLauncherFactory {
+  @override
+  void parse(BuildTree tree) {
+    // Remove style attributes that contain color-related styles
+    final element = tree.element;
+    if (element.attributes.containsKey('style')) {
+      final style = element.attributes['style']!;
+      final newStyle = style
+          .split(';')
+          .where((prop) =>
+              !prop.trim().toLowerCase().startsWith('color:') &&
+              !prop.trim().toLowerCase().startsWith('background-color:') &&
+              !prop.trim().toLowerCase().startsWith('border-color:'))
+          .join(';')
+          .trim();
+      if (newStyle.isEmpty) {
+        element.attributes.remove('style');
+      } else {
+        element.attributes['style'] = newStyle;
+      }
+    }
+    // Process any inline styles in the HTML
+    if (element.attributes.containsKey('color') ||
+        element.attributes.containsKey('bgcolor')) {
+      element.attributes.remove('color');
+      element.attributes.remove('bgcolor');
+    }
+    super.parse(tree);
   }
 }

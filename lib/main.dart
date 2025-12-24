@@ -25,6 +25,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
+import 'package:logging/logging.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
 // import 'package:firebase_core/firebase_core.dart';
@@ -35,6 +36,16 @@ late final Color? flavorPrimary;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  Logger.root.level = Level.ALL;
+
+  // Configure logging to print to console
+  Logger.root.onRecord.listen((record) {
+    // ignore: avoid_print
+    print(
+        '[${record.level.name}] ${record.loggerName}: ${record.message}${record.error != null ? '\n${record.error}' : ''}${record.stackTrace != null ? '\n${record.stackTrace}' : ''}');
+  });
+
   final dir = await getApplicationSupportDirectory();
   await Hive.initFlutter(dir.path);
   await Hive.openBox('settings');
@@ -86,10 +97,10 @@ void main() async {
     Whitelabels(),
   );
 
+  final whitelabel = await Whitelabels().getSelectedWhitelabel();
+
   getIt.registerSingleton<FPWebsockets>(
-    FPWebsockets(
-        token: (await Settings().getAuthTokenFromCookieJar()) ?? '',
-        userAgent: userAgent),
+    FPWebsockets(userAgent: userAgent, whitelabel: whitelabel),
   );
 
   getIt.registerSingleton<FPApiRequests>(

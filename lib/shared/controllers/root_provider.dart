@@ -59,31 +59,30 @@ class RootState {
   }
 }
 
-class RootNotifier extends StateNotifier<RootState> {
-  RootNotifier()
-      : super(RootState(
-            showText: false,
-            creators: [],
-            user: null,
-            isLoading: true,
-            appBarTitle: const Text('Floaty'),
-            appBarActions: [],
-            appBarLeading: null,
-            creatorSubscription: null,
-            isCollapsed: false,
-            isOpen: false)) {
+class RootNotifier extends Notifier<RootState> {
+  @override
+  RootState build() {
     _loadSavedState();
+    return RootState(
+        showText: false,
+        creators: [],
+        user: null,
+        isLoading: true,
+        appBarTitle: const Text('Floaty'),
+        appBarActions: [],
+        appBarLeading: null,
+        creatorSubscription: null,
+        isCollapsed: false,
+        isOpen: false);
   }
 
   Future<void> loadsidebar() async {
-    if (!mounted) return;
     try {
       fpApiRequests
           .getSubscribedCreators(
         (await whitelabels.getSelectedWhitelabel()).friendlyName,
       )
           .listen((fetchedCreators) {
-        if (!mounted) return;
         // Deduplicate by creator ID to prevent duplicates in sidebar
         final seenIds = <String>{};
         final uniqueCreators = fetchedCreators.where((creator) {
@@ -99,20 +98,16 @@ class RootNotifier extends StateNotifier<RootState> {
         (await whitelabels.getSelectedWhitelabel()).friendlyName,
       )
           .listen((fetchedUser) {
-        if (!mounted) return;
         state = state.copyWith(user: fetchedUser, isLoading: false);
       }, onError: (error) {
-        if (!mounted) return;
         state = state.copyWith(isLoading: false);
       });
     } catch (e) {
-      if (!mounted) return;
       state = state.copyWith(isLoading: false);
     }
   }
 
   void setAppBar(Widget title, {List<Widget>? actions, Widget? leading}) {
-    if (!mounted) return;
     state = state.copyWith(
         appBarTitle: title, appBarActions: actions, appBarLeading: leading);
   }
@@ -169,6 +164,6 @@ class RootNotifier extends StateNotifier<RootState> {
   }
 }
 
-final rootProvider = StateNotifierProvider<RootNotifier, RootState>((ref) {
+final rootProvider = NotifierProvider<RootNotifier, RootState>(() {
   return RootNotifier();
 });

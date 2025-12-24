@@ -11,12 +11,10 @@ import 'package:floaty/features/post/views/post_screen.dart';
 import 'package:floaty/features/profile/views/profile_screen.dart';
 import 'package:floaty/features/settings/views/settings_screen.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
-import 'package:floaty/features/player/components/pip_player_widget.dart';
 import 'package:floaty/features/updater/views/update_screen.dart';
 import 'package:floaty/main.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 final Middleware middleware = Middleware();
 
@@ -38,23 +36,6 @@ final GoRouter routerController = GoRouter(
       path: '/update',
       builder: (BuildContext context, GoRouterState state) {
         return const UpdateScreen();
-      },
-    ),
-    GoRoute(
-      path: '/pip',
-      pageBuilder: (BuildContext context, GoRouterState state) {
-        final Map<String, dynamic> args = state.extra as Map<String, dynamic>;
-        final videoController = args['controller'] as VideoController;
-        final postId = args['postId'] as String;
-        final live = args['live'] as bool;
-        return MaterialPage(
-          fullscreenDialog: true,
-          child: PipPlayerWidget(
-            videoController: videoController,
-            postId: postId,
-            live: live,
-          ),
-        );
       },
     ),
     ShellRoute(
