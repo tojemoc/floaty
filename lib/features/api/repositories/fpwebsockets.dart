@@ -361,7 +361,7 @@ class FPWebsockets {
   /// Schedule a reconnect with exponential backoff
   void _scheduleReconnect(Future<void> Function() reconnectFn) {
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 2), () async {
+    _reconnectTimer = Timer(const Duration(minutes: 30), () async {
       await reconnectFn();
     });
   }

@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'package:floaty/features/api/utils/error_handler.dart';
 import 'package:floaty/features/channel/components/filter_panel.dart';
 import 'package:floaty/features/channel/components/stat_column.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
 import 'package:floaty/settings.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,6 +79,8 @@ class ChannelScreenStateWrapperState
   bool legacy = false;
   bool subscribed = false;
   WhiteLabel? currentWhitelabel;
+  FloatyException? _error;
+  bool _hasLoadError = false;
 
   int pageloadint = 0;
 
@@ -154,7 +160,7 @@ class ChannelScreenStateWrapperState
       channelScreenProvider.select((state) => state.selectedIndex),
       (previous, next) {
         if (next == 2 && context.mounted) {
-          context.pushReplacement('/live/${widget.channelName}');
+          context.go('/live/${widget.channelName}');
           ref.read(channelScreenProvider.notifier).resetSelectedIndex();
         }
       },
@@ -202,6 +208,13 @@ class ChannelScreenStateWrapperState
 
       newposts = home;
 
+      // Clear error state on success
+      if (_error != null) {
+        setState(() {
+          _error = null;
+        });
+      }
+
       if (newposts.length < _pageSize) {
         _pagingController.value = _pagingController.value.copyWith(
           hasNextPage: false,
@@ -228,8 +241,38 @@ class ChannelScreenStateWrapperState
         return BlogPostCard(post,
             response: progressMap[post.id], key: Key(post.id ?? ''));
       }).toList();
-    } catch (error) {
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(details: e.message, originalError: e);
+        });
+      }
       return [];
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          if (FPApiErrorHandler.isConnectivityError(error)) {
+            _error = NoInternetException(details: error.toString());
+          } else {
+            _error = UnexpectedException(
+                details: error.toString(), originalError: error);
+          }
+        });
+      }
+      return [];
+    }
+  }
+
+  void _handleRetry() {
+    setState(() {
+      _error = null;
+      _hasLoadError = false;
+    });
+    if (rootchannel == null) {
+      load();
+    } else {
+      fetchafter = 0;
+      _pagingController.refresh();
     }
   }
 
@@ -248,63 +291,119 @@ class ChannelScreenStateWrapperState
 
   void load() async {
     bool statsFetched = false;
+    setState(() {
+      _hasLoadError = false;
+      _error = null;
+    });
 
-    if (widget.subName != null) {
-      isRootChannel = false;
+    try {
+      if (widget.subName != null) {
+        isRootChannel = false;
 
-      fpApiRequests
-          .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
-              urlname: widget.channelName)
-          .listen(
-        (creator) async {
-          if (mounted) {
-            final whitelabel = await whitelabels.getSelectedWhitelabel();
-            setState(() {
-              currentWhitelabel = whitelabel;
-              rootchannel = creator;
-              subscribed = rootLayoutKey.currentState!.ref
-                  .watch(rootProvider)
-                  .creators
-                  .any((c) => c.id == rootchannel.id);
-              channel = creator.channels?.firstWhere(
-                (channel) => channel.urlname == widget.subName,
-              );
-              rootLayoutKey.currentState?.setAppBar(Text(channel.title));
+        fpApiRequests
+            .getCreator(
+                (await whitelabels.getSelectedWhitelabel()).friendlyName,
+                urlname: widget.channelName)
+            .listen(
+          (creator) async {
+            if (mounted) {
+              final whitelabel = await whitelabels.getSelectedWhitelabel();
+              setState(() {
+                currentWhitelabel = whitelabel;
+                rootchannel = creator;
+                _hasLoadError = false;
+                subscribed = rootLayoutKey.currentState!.ref
+                    .watch(rootProvider)
+                    .creators
+                    .any((c) => c.id == rootchannel.id);
+                channel = creator.channels?.firstWhere(
+                  (channel) => channel.urlname == widget.subName,
+                );
+                rootLayoutKey.currentState?.setAppBar(Text(channel.title));
 
-              if (!statsFetched && rootchannel.id != null) {
-                statsFetched = true;
-                getStats();
-              }
-            });
-          }
-        },
-      );
-    } else {
-      isRootChannel = true;
-
-      fpApiRequests
-          .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
-              urlname: widget.channelName)
-          .listen((creator) async {
-        if (mounted) {
-          final whitelabel = await whitelabels.getSelectedWhitelabel();
-          setState(() {
-            currentWhitelabel = whitelabel;
-            channel = creator;
-            rootchannel = creator;
-            subscribed = rootLayoutKey.currentState!.ref
-                .watch(rootProvider)
-                .creators
-                .any((c) => c.id == rootchannel.id);
-            rootLayoutKey.currentState?.setAppBar(Text(channel.title));
-
-            if (!statsFetched && rootchannel.id != null) {
-              statsFetched = true;
-              getStats();
+                if (!statsFetched && rootchannel.id != null) {
+                  statsFetched = true;
+                  getStats();
+                }
+              });
             }
-          });
-        }
-      });
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() {
+                _hasLoadError = true;
+                isLoading = false;
+                if (FPApiErrorHandler.isConnectivityError(error)) {
+                  _error = NoInternetException(details: error.toString());
+                } else {
+                  _error = UnexpectedException(
+                      details: error.toString(), originalError: error);
+                }
+              });
+            }
+          },
+        );
+      } else {
+        isRootChannel = true;
+
+        fpApiRequests
+            .getCreator(
+                (await whitelabels.getSelectedWhitelabel()).friendlyName,
+                urlname: widget.channelName)
+            .listen(
+          (creator) async {
+            if (mounted) {
+              final whitelabel = await whitelabels.getSelectedWhitelabel();
+              setState(() {
+                currentWhitelabel = whitelabel;
+                channel = creator;
+                rootchannel = creator;
+                _hasLoadError = false;
+                subscribed = rootLayoutKey.currentState!.ref
+                    .watch(rootProvider)
+                    .creators
+                    .any((c) => c.id == rootchannel.id);
+                rootLayoutKey.currentState?.setAppBar(Text(channel.title));
+
+                if (!statsFetched && rootchannel.id != null) {
+                  statsFetched = true;
+                  getStats();
+                }
+              });
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() {
+                _hasLoadError = true;
+                isLoading = false;
+                if (FPApiErrorHandler.isConnectivityError(error)) {
+                  _error = NoInternetException(details: error.toString());
+                } else {
+                  _error = UnexpectedException(
+                      details: error.toString(), originalError: error);
+                }
+              });
+            }
+          },
+        );
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasLoadError = true;
+          isLoading = false;
+          _error = NoInternetException(details: e.message, originalError: e);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasLoadError = true;
+          isLoading = false;
+          _error = UnexpectedException(details: e.toString(), originalError: e);
+        });
+      }
     }
   }
 
@@ -845,6 +944,16 @@ class ChannelScreenStateWrapperState
                 _scrollController.hasClients &&
                 _scrollController.offset > _scrollThreshold);
 
+    // Show error screen if we have a load error and no channel data
+    if (_hasLoadError && _error != null && rootchannel == null) {
+      return Scaffold(
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: _handleRetry,
+        ),
+      );
+    }
+
     return isLoading
         ? const Center(child: CircularProgressIndicator())
         : LayoutBuilder(
@@ -879,6 +988,17 @@ class ChannelScreenStateWrapperState
                               },
                             ),
                           ),
+                          // Show inline error banner if there's an error but we have channel data
+                          if (_error != null && rootchannel != null)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: InlineErrorIndicator(
+                                  message: _error?.userMessage,
+                                  onRetry: _handleRetry,
+                                ),
+                              ),
+                            ),
                           if (isLoading)
                             const SliverFillRemaining(
                               child: Center(child: CircularProgressIndicator()),

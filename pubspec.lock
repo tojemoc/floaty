@@ -1070,6 +1070,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  pip:
+    dependency: "direct main"
+    description:
+      name: pip
+      sha256: f3c0890458a1e7ea3597fd2432841fb82565d66e4aa5b4931326a2ec052b3505
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.3"
   platform:
     dependency: transitive
     description:
@@ -1319,14 +1327,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "14.6.1"
-  simple_pip_mode:
-    dependency: "direct main"
-    description:
-      name: simple_pip_mode
-      sha256: "9266896e719e0c877cf02ed8641e82c529112cfcb8c49682569e8a46c2cc381e"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.0"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -1694,7 +1694,7 @@ packages:
     source: hosted
     version: "3.4.0"
   wakelock_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: wakelock_plus
       sha256: "9296d40c9adbedaba95d1e704f4e0b434be446e2792948d0e4aa977048104228"

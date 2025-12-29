@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:floaty/features/api/models/definitions.dart';
+import 'package:floaty/features/api/utils/error_handler.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -19,6 +23,8 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PagingController<int, BlogPostCard> _pagingController;
   List<String> creatorIds = [];
   List<ContentCreatorListLastItems> lastElements = [];
+  FloatyException? _error;
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -44,10 +50,28 @@ class _HomeScreenState extends State<HomeScreen> {
           .getSubscribedCreatorsIds(
               (await whitelabels.getSelectedWhitelabel()).friendlyName)
           .first;
+    } on SocketException catch (e) {
+      throw NoInternetException(details: e.message, originalError: e);
+    } on TimeoutException catch (e) {
+      throw TimeoutException(details: e.message, originalError: e)
+          as FloatyException;
     } catch (error) {
+      if (FPApiErrorHandler.isConnectivityError(error)) {
+        throw NoInternetException(details: error.toString());
+      }
       creatorIds = [];
     }
     return creatorIds;
+  }
+
+  void _handleRetry() {
+    setState(() {
+      _hasError = false;
+      _error = null;
+    });
+    lastElements = [];
+    creatorIds = [];
+    _pagingController.refresh();
   }
 
   Future<List<BlogPostCard>> _fetchPage(int pageKey) async {
@@ -71,6 +95,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return [];
+
+      // Clear any previous error state on successful fetch
+      if (_hasError) {
+        setState(() {
+          _hasError = false;
+          _error = null;
+        });
+      }
 
       final newPosts = home.blogPosts ?? [];
       lastElements = home.lastElements ?? [];
@@ -101,7 +133,34 @@ class _HomeScreenState extends State<HomeScreen> {
       return newPosts.map((post) {
         return BlogPostCard(post, response: progressMap[post.id]);
       }).toList();
+    } on FloatyException catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _error = e;
+        });
+      }
+      return [];
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _error = NoInternetException(details: e.message, originalError: e);
+        });
+      }
+      return [];
     } catch (error) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          if (FPApiErrorHandler.isConnectivityError(error)) {
+            _error = NoInternetException(details: error.toString());
+          } else {
+            _error = UnexpectedException(
+                details: error.toString(), originalError: error);
+          }
+        });
+      }
       return [];
     }
   }
@@ -116,6 +175,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Show full-screen error if we have an error and no items
+    if (_hasError &&
+        _error != null &&
+        _pagingController.value.items?.isEmpty != false) {
+      return Scaffold(
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: _handleRetry,
+        ),
+      );
+    }
+
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
@@ -149,8 +220,22 @@ class _HomeScreenState extends State<HomeScreen> {
                                 key: Key(item.blogPost.id ?? '')),
                           ),
                           noItemsFoundIndicatorBuilder: (context) =>
-                              const Center(
-                            child: Text("No items found."),
+                              _hasError && _error != null
+                                  ? ErrorScreen.fromException(_error!,
+                                      onRetry: _handleRetry)
+                                  : const Center(
+                                      child: Text("No items found."),
+                                    ),
+                          firstPageErrorIndicatorBuilder: (context) =>
+                              ErrorScreen.fromException(
+                            _error ?? const UnexpectedException(),
+                            onRetry: _handleRetry,
+                          ),
+                          newPageErrorIndicatorBuilder: (context) =>
+                              InlineErrorIndicator(
+                            message:
+                                _error?.userMessage ?? 'Failed to load more',
+                            onRetry: _handleRetry,
                           ),
                         ),
                       )
@@ -175,8 +260,22 @@ class _HomeScreenState extends State<HomeScreen> {
                                 key: Key(item.blogPost.id ?? '')),
                           ),
                           noItemsFoundIndicatorBuilder: (context) =>
-                              const Center(
-                            child: Text("No items found."),
+                              _hasError && _error != null
+                                  ? ErrorScreen.fromException(_error!,
+                                      onRetry: _handleRetry)
+                                  : const Center(
+                                      child: Text("No items found."),
+                                    ),
+                          firstPageErrorIndicatorBuilder: (context) =>
+                              ErrorScreen.fromException(
+                            _error ?? const UnexpectedException(),
+                            onRetry: _handleRetry,
+                          ),
+                          newPageErrorIndicatorBuilder: (context) =>
+                              InlineErrorIndicator(
+                            message:
+                                _error?.userMessage ?? 'Failed to load more',
+                            onRetry: _handleRetry,
                           ),
                         ),
                       );

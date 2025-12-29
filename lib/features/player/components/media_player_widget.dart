@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/player/components/custom_player/custom_player.dart';
@@ -103,17 +105,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
       chapters: widget.chapters,
     );
 
-    // // Check PiP availability for the platform
-    // if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    //   pipAvailable = true;
-    // } else if (Platform.isAndroid) {
-    //   pipAvailable = await PipService.isPipAvailable;
-    //   print('Android PiP available: $pipAvailable');
-    // } else {
-    //   pipAvailable = false;
-    // }
-
-    pipAvailable = true;
+    pipAvailable = await _mediaService.isPipAvailable();
 
     print('Player initialized');
     print('Initial state: ${widget.initialState}');
@@ -164,7 +156,8 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
 
         return CustomPlayer(
           key: ValueKey(widget.postId ?? widget.mediaUrl),
-          isDesktop: false,
+          isDesktop:
+              (Platform.isWindows || Platform.isLinux || Platform.isMacOS),
           video: videoWidget,
           thumbnailSprite: widget.timelineSprite,
           pipAvailable: pipAvailable,

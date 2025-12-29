@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:floaty/settings.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/gestures.dart';
@@ -8,6 +10,8 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timelines_plus/timelines_plus.dart';
 import 'dart:convert';
@@ -47,6 +51,8 @@ class ProfileScreenStateWrapperState
   bool isLoading = true;
   bool isActivityLoading = true;
   List<DateModel>? parseddates;
+  FloatyException? _error;
+  FloatyException? _activityError;
 
   dynamic user;
   dynamic activity;
@@ -85,58 +91,110 @@ class ProfileScreenStateWrapperState
   }
 
   void load() async {
-    final res = await fpApiRequests.getNamedUser(
-        (await whitelabels.getSelectedWhitelabel()).friendlyName,
-        widget.userName);
     setState(() {
-      user = res;
-      rootLayoutKey.currentState?.setAppBar(Text(user[0]['username']));
-      isLoading = false;
+      _error = null;
+      isLoading = true;
     });
-    parseActivityData();
+
+    try {
+      final res = await fpApiRequests.getNamedUser(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
+          widget.userName);
+      if (mounted) {
+        setState(() {
+          user = res;
+          rootLayoutKey.currentState?.setAppBar(Text(user[0]['username']));
+          isLoading = false;
+        });
+        parseActivityData();
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(originalError: e);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = UnexpectedException(
+            message: 'Failed to load profile',
+            details: e.toString(),
+            originalError: e,
+          );
+          isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> parseActivityData() async {
-    final res = jsonDecode(await fpApiRequests.getActivity(
-        (await whitelabels.getSelectedWhitelabel()).friendlyName,
-        user[0]['id']));
-    final activityData = res['activity'] as List<dynamic>;
-    Map<String, List<CommentData>> commentsByDate = {};
-    for (var item in activityData) {
-      DateTime dateTime = DateTime.parse(item['time']);
-      String formattedDate =
-          "${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}";
-      CommentData comment = CommentData(
-        time: dateTime,
-        comment: item['comment'],
-        postTitle: item['postTitle'],
-        postId: item['postId'],
-        creatorTitle: item['creatorTitle'],
-        creatorUrl: item['creatorUrl'],
-      );
-
-      if (!commentsByDate.containsKey(formattedDate)) {
-        commentsByDate[formattedDate] = [];
-      }
-      commentsByDate[formattedDate]!.add(comment);
-    }
-    List<DateModel> dates = commentsByDate.entries.map((entry) {
-      return DateModel(
-        date: entry.key,
-        comments: entry.value,
-      );
-    }).toList();
-    dates.sort((a, b) {
-      return b.comments.first.time.compareTo(a.comments.first.time);
+    setState(() {
+      _activityError = null;
+      isActivityLoading = true;
     });
-    for (var dateModel in dates) {
-      dateModel.comments.sort((a, b) => b.time.compareTo(a.time));
-    }
-    if (mounted) {
-      setState(() {
-        parseddates = dates;
-        isActivityLoading = false;
+
+    try {
+      final res = jsonDecode(await fpApiRequests.getActivity(
+          (await whitelabels.getSelectedWhitelabel()).friendlyName,
+          user[0]['id']));
+      final activityData = res['activity'] as List<dynamic>;
+      Map<String, List<CommentData>> commentsByDate = {};
+      for (var item in activityData) {
+        DateTime dateTime = DateTime.parse(item['time']);
+        String formattedDate =
+            "${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}";
+        CommentData comment = CommentData(
+          time: dateTime,
+          comment: item['comment'],
+          postTitle: item['postTitle'],
+          postId: item['postId'],
+          creatorTitle: item['creatorTitle'],
+          creatorUrl: item['creatorUrl'],
+        );
+
+        if (!commentsByDate.containsKey(formattedDate)) {
+          commentsByDate[formattedDate] = [];
+        }
+        commentsByDate[formattedDate]!.add(comment);
+      }
+      List<DateModel> dates = commentsByDate.entries.map((entry) {
+        return DateModel(
+          date: entry.key,
+          comments: entry.value,
+        );
+      }).toList();
+      dates.sort((a, b) {
+        return b.comments.first.time.compareTo(a.comments.first.time);
       });
+      for (var dateModel in dates) {
+        dateModel.comments.sort((a, b) => b.time.compareTo(a.time));
+      }
+      if (mounted) {
+        setState(() {
+          parseddates = dates;
+          isActivityLoading = false;
+        });
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _activityError = NoInternetException(originalError: e);
+          isActivityLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _activityError = UnexpectedException(
+            message: 'Failed to load activity',
+            details: e.toString(),
+            originalError: e,
+          );
+          isActivityLoading = false;
+        });
+      }
     }
   }
 
@@ -321,6 +379,14 @@ class ProfileScreenStateWrapperState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_error != null) {
+      return ErrorScreen.fromException(
+        _error!,
+        onRetry: load,
+      );
+    }
+
     return isLoading
         ? const Center(child: CircularProgressIndicator())
         : LayoutBuilder(

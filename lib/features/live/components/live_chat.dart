@@ -41,6 +41,7 @@ class _LiveChatState extends ConsumerState<LiveChat> {
   bool isSettingsOpen = false;
   bool showEmotePicker = false;
   bool showPoll = false;
+  bool livechatdisabled = true;
 
   @override
   void initState() {
@@ -62,7 +63,7 @@ class _LiveChatState extends ConsumerState<LiveChat> {
         .read(webSocketEventHandlerProvider)
         .chatConnect(widget.liveId!, widget.creatorId, controller);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      ref.read(chatterlistprovider.notifier).getChatterList(widget.creatorId);
+      // ref.read(chatterlistprovider.notifier).getChatterList(widget.creatorId);
       if (widget.creatorId != await settings.getKey('creatorId')) {
         ref.read(webSocketEventHandlerProvider).reset();
         await settings.setKey('creatorId', widget.creatorId);
@@ -119,46 +120,49 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                 )
               : null,
           actions: [
-            IconButton(
-              onPressed: () async {
-                if (isSettingsOpen) {
-                  setState(() {
-                    isSettingsOpen = false;
-                  });
-                }
-                ref
-                    .read(chatterlistprovider.notifier)
-                    .getChatterList(trueliveid!);
-                if (ref.read(chatterlistprovider).isEmpty) {
-                  ref
-                      .read(errorProvider.notifier)
-                      .setError(ref.read(chatterlistprovider).toString());
-                  setState(() {
-                    isChatterListOpen = !isChatterListOpen;
-                  });
-                } else {
-                  if (isChatterListOpen) {
+            if (!livechatdisabled) ...[
+              IconButton(
+                onPressed: () async {
+                  if (isSettingsOpen) {
                     setState(() {
-                      isChatterListOpen = false;
-                    });
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (ref.watch(chatbroken) == false) {
-                        _scrollController.jumpTo(
-                          _scrollController.position.maxScrollExtent,
-                        );
-                      }
-                    });
-                  } else {
-                    setState(() {
-                      isChatterListOpen = true;
+                      isSettingsOpen = false;
                     });
                   }
-                }
-              },
-              icon: isChatterListOpen
-                  ? Icon(Icons.chat, color: theme.textTheme.titleLarge?.color)
-                  : Icon(Icons.list, color: theme.textTheme.titleLarge?.color),
-            ),
+                  ref
+                      .read(chatterlistprovider.notifier)
+                      .getChatterList(trueliveid!);
+                  if (ref.read(chatterlistprovider).isEmpty) {
+                    ref
+                        .read(errorProvider.notifier)
+                        .setError(ref.read(chatterlistprovider).toString());
+                    setState(() {
+                      isChatterListOpen = !isChatterListOpen;
+                    });
+                  } else {
+                    if (isChatterListOpen) {
+                      setState(() {
+                        isChatterListOpen = false;
+                      });
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (ref.watch(chatbroken) == false) {
+                          _scrollController.jumpTo(
+                            _scrollController.position.maxScrollExtent,
+                          );
+                        }
+                      });
+                    } else {
+                      setState(() {
+                        isChatterListOpen = true;
+                      });
+                    }
+                  }
+                },
+                icon: isChatterListOpen
+                    ? Icon(Icons.chat, color: theme.textTheme.titleLarge?.color)
+                    : Icon(Icons.list,
+                        color: theme.textTheme.titleLarge?.color),
+              ),
+            ],
             IconButton(
               onPressed: () async {
                 if (isChatterListOpen) {
@@ -228,80 +232,101 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                       child: Stack(children: [
                         Column(
                           children: [
-                            Flexible(
-                              child: Stack(
-                                children: [
-                                  if (ref.watch(connectionProvider).isNotEmpty)
-                                    Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      bottom: 7.5,
-                                      child: Center(
-                                        child: Badge(
-                                          backgroundColor: ref.watch(
-                                                          connectionProvider)[
-                                                      'color'] ==
-                                                  'success'
-                                              ? colorScheme.secondaryContainer
-                                              : ref.watch(connectionProvider)[
-                                                          'color'] ==
-                                                      'warning'
-                                                  ? colorScheme
-                                                      .tertiaryContainer
-                                                  : colorScheme.errorContainer,
-                                          label: Text(
-                                            ref.watch(connectionProvider)[
-                                                    'message'] ??
-                                                'Disconnected',
-                                            style: TextStyle(
-                                              color: ref.watch(
-                                                              connectionProvider)[
-                                                          'color'] ==
-                                                      'success'
-                                                  ? colorScheme
-                                                      .onSecondaryContainer
-                                                  : ref.watch(connectionProvider)[
-                                                              'color'] ==
-                                                          'warning'
-                                                      ? colorScheme
-                                                          .onTertiaryContainer
-                                                      : colorScheme
-                                                          .onErrorContainer,
+                            if (!livechatdisabled) ...[
+                              Flexible(
+                                child: Stack(
+                                  children: [
+                                    if (ref
+                                        .watch(connectionProvider)
+                                        .isNotEmpty)
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 7.5,
+                                        child: Center(
+                                          child: Badge(
+                                            backgroundColor: ref.watch(
+                                                            connectionProvider)[
+                                                        'color'] ==
+                                                    'success'
+                                                ? colorScheme.secondaryContainer
+                                                : ref.watch(connectionProvider)[
+                                                            'color'] ==
+                                                        'warning'
+                                                    ? colorScheme
+                                                        .tertiaryContainer
+                                                    : colorScheme
+                                                        .errorContainer,
+                                            label: Text(
+                                              ref.watch(connectionProvider)[
+                                                      'message'] ??
+                                                  'Disconnected',
+                                              style: TextStyle(
+                                                color: ref.watch(
+                                                                connectionProvider)[
+                                                            'color'] ==
+                                                        'success'
+                                                    ? colorScheme
+                                                        .onSecondaryContainer
+                                                    : ref.watch(connectionProvider)[
+                                                                'color'] ==
+                                                            'warning'
+                                                        ? colorScheme
+                                                            .onTertiaryContainer
+                                                        : colorScheme
+                                                            .onErrorContainer,
+                                              ),
                                             ),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 3.5, horizontal: 10),
                                           ),
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 3.5, horizontal: 10),
+                                        ),
+                                      ),
+                                    ListView.builder(
+                                      controller: _scrollController,
+                                      itemCount: messages.length,
+                                      itemBuilder: (context, index) {
+                                        final msg = messages[index];
+                                        return Column(
+                                          children: [
+                                            ListTile(
+                                              tileColor: msg.notification
+                                                  ? Colors.orange
+                                                  : null,
+                                              minLeadingWidth: 0,
+                                              minVerticalPadding: 0,
+                                              minTileHeight: 1,
+                                              title: Text.rich(
+                                                  TextSpan(children: msg.text)),
+                                            ),
+                                            Divider(
+                                                indent: 2,
+                                                endIndent: 2,
+                                                height: 2)
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else ...[
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Center(
+                                      child: Text(
+                                        "A bug is preventing live chat from functioning at this time. The floatplane team are working on a fix. You can continue to vote on polls but all chat functionality is disabled.",
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ),
-                                  ListView.builder(
-                                    controller: _scrollController,
-                                    itemCount: messages.length,
-                                    itemBuilder: (context, index) {
-                                      final msg = messages[index];
-                                      return Column(
-                                        children: [
-                                          ListTile(
-                                            tileColor: msg.notification
-                                                ? Colors.orange
-                                                : null,
-                                            minLeadingWidth: 0,
-                                            minVerticalPadding: 0,
-                                            minTileHeight: 1,
-                                            title: Text.rich(
-                                                TextSpan(children: msg.text)),
-                                          ),
-                                          Divider(
-                                              indent: 2,
-                                              endIndent: 2,
-                                              height: 2)
-                                        ],
-                                      );
-                                    },
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
                             if (ref.watch(pollprovider).isNotEmpty)
                               Column(
                                 children: [
@@ -357,82 +382,87 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                                   ),
                                 ],
                               ),
-                            Column(
-                              children: [
-                                Container(
-                                  height: 35,
-                                  color: colorScheme.surfaceContainer,
-                                  padding: EdgeInsets.only(top: 6),
-                                  child: ListTile(
-                                    minVerticalPadding: 0,
-                                    minTileHeight: 1,
-                                    dense: true,
-                                    title: Text("Emotes",
-                                        style: TextStyle(fontSize: 16)),
-                                    onTap: () {
-                                      setState(() {
-                                        showEmotePicker = !showEmotePicker;
-                                      });
-                                    },
-                                    trailing: IconButton(
-                                      iconSize: 15,
-                                      icon: Icon(
-                                        showEmotePicker
-                                            ? Icons.arrow_drop_down
-                                            : Icons.arrow_drop_up,
-                                      ),
-                                      onPressed: () {
+                            if (!livechatdisabled) ...[
+                              Column(
+                                children: [
+                                  Container(
+                                    height: 35,
+                                    color: colorScheme.surfaceContainer,
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: ListTile(
+                                      minVerticalPadding: 0,
+                                      minTileHeight: 1,
+                                      dense: true,
+                                      title: Text("Emotes",
+                                          style: TextStyle(fontSize: 16)),
+                                      onTap: () {
                                         setState(() {
                                           showEmotePicker = !showEmotePicker;
                                         });
                                       },
+                                      trailing: IconButton(
+                                        iconSize: 15,
+                                        icon: Icon(
+                                          showEmotePicker
+                                              ? Icons.arrow_drop_down
+                                              : Icons.arrow_drop_up,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            showEmotePicker = !showEmotePicker;
+                                          });
+                                        },
+                                      ),
                                     ),
                                   ),
-                                ),
-                                AnimatedContainer(
-                                  duration: Duration(milliseconds: 300),
-                                  height: showEmotePicker ? 90 : 0,
-                                  color: colorScheme.surfaceContainer,
-                                  child: ref.watch(emotepickerProvider).isEmpty
-                                      ? CircularProgressIndicator()
-                                      : emotePicker(ref, controller),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: TextField(
-                                    maxLength: 500,
-                                    maxLengthEnforcement:
-                                        MaxLengthEnforcement.enforced,
-                                    minLines: 1,
-                                    maxLines: 2,
-                                    controller: controller,
-                                    onSubmitted: (String value) {
+                                  AnimatedContainer(
+                                    duration: Duration(milliseconds: 300),
+                                    height: showEmotePicker ? 90 : 0,
+                                    color: colorScheme.surfaceContainer,
+                                    child:
+                                        ref.watch(emotepickerProvider).isEmpty
+                                            ? CircularProgressIndicator()
+                                            : emotePicker(ref, controller),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: TextField(
+                                      maxLength: 500,
+                                      maxLengthEnforcement:
+                                          MaxLengthEnforcement.enforced,
+                                      minLines: 1,
+                                      maxLines: 2,
+                                      controller: controller,
+                                      onSubmitted: (String value) {
+                                        ref
+                                            .read(chatProvider.notifier)
+                                            .sendMessage("User",
+                                                controller.text, trueliveid!);
+                                        controller.clear();
+                                      },
+                                      decoration: InputDecoration(
+                                          contentPadding: EdgeInsets.all(4),
+                                          border: InputBorder.none,
+                                          counterText: '', // i love flutter
+                                          hintText: "Enter your message"),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.send),
+                                    onPressed: () {
                                       ref
                                           .read(chatProvider.notifier)
                                           .sendMessage("User", controller.text,
                                               trueliveid!);
                                       controller.clear();
                                     },
-                                    decoration: InputDecoration(
-                                        contentPadding: EdgeInsets.all(4),
-                                        border: InputBorder.none,
-                                        counterText: '', // i love flutter
-                                        hintText: "Enter your message"),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.send),
-                                  onPressed: () {
-                                    ref.read(chatProvider.notifier).sendMessage(
-                                        "User", controller.text, trueliveid!);
-                                    controller.clear();
-                                  },
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                         Positioned(

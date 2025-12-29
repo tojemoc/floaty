@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/api/models/definitions.dart';
+import 'package:floaty/features/api/utils/error_handler.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -16,6 +19,7 @@ class PostState {
   final ContentPostV3Response? post;
   final bool isLoading;
   final String? error;
+  final FloatyException? exception;
   final bool isLiked;
   final bool isDisliked;
   final int likeCount;
@@ -40,6 +44,7 @@ class PostState {
     this.post,
     this.isLoading = true,
     this.error,
+    this.exception,
     this.isLiked = false,
     this.isDisliked = false,
     this.likeCount = 0,
@@ -60,10 +65,13 @@ class PostState {
     this.latenessString = '',
   });
 
+  bool get hasError => error != null || exception != null;
+
   PostState copyWith({
     ContentPostV3Response? post,
     bool? isLoading,
     String? error,
+    FloatyException? exception,
     bool? isLiked,
     bool? isDisliked,
     int? likeCount,
@@ -82,11 +90,13 @@ class PostState {
     bool? hundredpercentlate,
     bool? isWan,
     String? latenessString,
+    bool clearError = false,
   }) {
     return PostState(
       post: post ?? this.post,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
+      exception: clearError ? null : (exception ?? this.exception),
       isLiked: isLiked ?? this.isLiked,
       isDisliked: isDisliked ?? this.isDisliked,
       likeCount: likeCount ?? this.likeCount,
@@ -114,7 +124,7 @@ class PostNotifier extends StateNotifier<PostState> {
   PostNotifier() : super(PostState());
 
   Future<ContentPostV3Response> getPost(String postId) async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       ContentPostV3Response? loadedPost;
@@ -132,6 +142,7 @@ class PostNotifier extends StateNotifier<PostState> {
           selectedAttachmentId: post.attachmentOrder.isNotEmpty
               ? post.attachmentOrder.first
               : null,
+          clearError: true,
         );
         rootLayoutKey.currentState?.setAppBar(Text(post.title ?? ''));
         await _loadRecommendedPosts(postId);
@@ -139,7 +150,7 @@ class PostNotifier extends StateNotifier<PostState> {
       }
 
       if (loadedPost == null) {
-        throw Exception('Failed to load post');
+        throw const ContentUnavailableException(message: 'Failed to load post');
       }
 
       //whenplane intergration
@@ -257,13 +268,41 @@ class PostNotifier extends StateNotifier<PostState> {
       }
 
       return loadedPost;
-    } catch (e) {
+    } on SocketException catch (e) {
+      final exception =
+          NoInternetException(details: e.message, originalError: e);
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
+        exception: exception,
+      );
+      rethrow;
+    } on FloatyException catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        exception: e,
+      );
+      rethrow;
+    } catch (e) {
+      FloatyException exception;
+      if (FPApiErrorHandler.isConnectivityError(e)) {
+        exception = NoInternetException(details: e.toString());
+      } else {
+        exception =
+            UnexpectedException(details: e.toString(), originalError: e);
+      }
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        exception: exception,
       );
       rethrow;
     }
+  }
+
+  void retry(String postId) {
+    getPost(postId);
   }
 
   Future<void> _loadRecommendedPosts(String postId) async {

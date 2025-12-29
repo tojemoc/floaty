@@ -7,13 +7,9 @@ import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.ryanheise.audioservice.AudioServicePlugin
-import cl.puntito.simple_pip_mode.PipCallbackHelper
 import uz.shs.better_player_plus.BetterPlayerPlugin
 
 class MainActivity : FlutterFragmentActivity() {
-
-    // Lazy initialize the PIP helper to prevent lateinit crashes
-    private val pipCallbackHelper: PipCallbackHelper by lazy { PipCallbackHelper() }
 
     private var flutterEngine: FlutterEngine? = null
 
@@ -24,8 +20,6 @@ class MainActivity : FlutterFragmentActivity() {
         val engine = AudioServicePlugin.getFlutterEngine(context)
         flutterEngine = engine
 
-        // Initialize PIP helper safely
-        pipCallbackHelper.configureFlutterEngine(engine)
 
         return engine
     }
@@ -34,7 +28,6 @@ class MainActivity : FlutterFragmentActivity() {
         // Ensure engine exists before super.onCreate()
         if (flutterEngine == null) {
             flutterEngine = AudioServicePlugin.getFlutterEngine(this)
-            pipCallbackHelper.configureFlutterEngine(flutterEngine!!)
         }
         super.onCreate(savedInstanceState)
     }
@@ -57,7 +50,6 @@ class MainActivity : FlutterFragmentActivity() {
         newConfig: Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        pipCallbackHelper.onPictureInPictureModeChanged(isInPictureInPictureMode)
-        BetterPlayerPlugin.onPictureInPictureModeChanged(isInPictureInPictureMode)
+                BetterPlayerPlugin.onPictureInPictureModeChanged(isInPictureInPictureMode)
     }
 }

@@ -257,6 +257,27 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         // }
       });
     }
+
+    // Show error screen if there's an error and no post data
+    if (postState.hasError && postState.post == null) {
+      return Scaffold(
+        body: postState.exception != null
+            ? ErrorScreen.fromException(
+                postState.exception!,
+                onRetry: () => ref
+                    .read(postProvider(widget.postId).notifier)
+                    .retry(widget.postId),
+              )
+            : ErrorScreen(
+                message: postState.error,
+                subtext: 'Failed to load post',
+                onRetry: () => ref
+                    .read(postProvider(widget.postId).notifier)
+                    .retry(widget.postId),
+              ),
+      );
+    }
+
     return postState.isLoading
         ? const Center(child: CircularProgressIndicator())
         : Scaffold(

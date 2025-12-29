@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:floaty/features/api/models/definitions.dart';
+import 'package:floaty/features/api/utils/error_handler.dart';
 import 'package:floaty/features/post/components/blog_post_card.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -27,6 +31,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _isLoading = false;
   bool _hasMore = true;
   String? _error;
+  FloatyException? _exception;
   int _offset = 0;
 
   @override
@@ -170,6 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _isLoading = true;
       if (refresh) {
         _error = null;
+        _exception = null;
         _sections = [];
         _offset = 0;
         _hasMore = true;
@@ -200,12 +206,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _offset += items.length;
         _isLoading = false;
         _error = null;
+        _exception = null;
+      });
+    } on SocketException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _exception = NoInternetException(details: e.message, originalError: e);
+        _isLoading = false;
+        if (refresh) {
+          _sections = [];
+        }
       });
     } catch (error) {
       if (!mounted) return;
 
       setState(() {
         _error = error.toString();
+        if (FPApiErrorHandler.isConnectivityError(error)) {
+          _exception = NoInternetException(details: error.toString());
+        } else {
+          _exception = UnexpectedException(
+              details: error.toString(), originalError: error);
+        }
         _isLoading = false;
         if (refresh) {
           _sections = [];
@@ -282,32 +305,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     if (_error != null && _sections.isEmpty) {
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.red,
-                size: 32,
+        body: _exception != null
+            ? ErrorScreen.fromException(
+                _exception!,
+                onRetry: () => _loadHistory(true),
+              )
+            : ErrorScreen(
+                message: _error,
+                subtext: 'Failed to load history',
+                onRetry: () => _loadHistory(true),
               ),
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => _loadHistory(true),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
       );
     }
 

@@ -5,6 +5,8 @@ import 'package:floaty/features/authentication/services/oauth2_service.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/main.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -303,6 +305,8 @@ class AccountSettingsScreen extends StatefulWidget {
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   late final Map<String, dynamic>? user;
   bool isLoading = true;
+  FloatyException? _error;
+
   @override
   void initState() {
     super.initState();
@@ -310,20 +314,70 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 
   void getdata() async {
-    final userinfo = await fpApiRequests.getUserInfo(
-      (await whitelabels.getSelectedWhitelabel()).friendlyName,
-    );
-    if (mounted) {
-      setState(() {
-        isLoading = false;
-        user = userinfo;
-      });
+    setState(() {
+      _error = null;
+      isLoading = true;
+    });
+
+    try {
+      final userinfo = await fpApiRequests.getUserInfo(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+      );
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          user = userinfo;
+        });
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(originalError: e);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = UnexpectedException(
+            message: 'Failed to load profile',
+            details: e.toString(),
+            originalError: e,
+          );
+          isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: MediaQuery.of(context).size.width < 600
+            ? AppBar(
+                elevation: 0,
+                toolbarHeight: 40,
+                backgroundColor: colorScheme.surfaceContainer,
+                surfaceTintColor: colorScheme.surfaceContainer,
+                title: const Text('Floatplane Account'),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    context.canPop() ? context.pop() : SystemNavigator.pop();
+                  },
+                ),
+              )
+            : null,
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: getdata,
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: MediaQuery.of(context).size.width < 600
           ? AppBar(
@@ -391,6 +445,8 @@ class InvoicesSettingsScreen extends StatefulWidget {
 class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
   late final Map<String, dynamic>? invoices;
   bool isLoading = true;
+  FloatyException? _error;
+
   @override
   void initState() {
     super.initState();
@@ -398,20 +454,70 @@ class _InvoicesSettingsScreenState extends State<InvoicesSettingsScreen> {
   }
 
   void getdata() async {
-    final invoices = await fpApiRequests.getInvoices(
-      (await whitelabels.getSelectedWhitelabel()).friendlyName,
-    );
-    if (mounted) {
-      setState(() {
-        isLoading = false;
-        this.invoices = invoices;
-      });
+    setState(() {
+      _error = null;
+      isLoading = true;
+    });
+
+    try {
+      final invoicesData = await fpApiRequests.getInvoices(
+        (await whitelabels.getSelectedWhitelabel()).friendlyName,
+      );
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          invoices = invoicesData;
+        });
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(originalError: e);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = UnexpectedException(
+            message: 'Failed to load invoices',
+            details: e.toString(),
+            originalError: e,
+          );
+          isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: MediaQuery.of(context).size.width < 600
+            ? AppBar(
+                elevation: 0,
+                toolbarHeight: 40,
+                backgroundColor: colorScheme.surfaceContainer,
+                surfaceTintColor: colorScheme.surfaceContainer,
+                title: const Text('Invoices'),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    context.canPop() ? context.pop() : SystemNavigator.pop();
+                  },
+                ),
+              )
+            : null,
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: getdata,
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: MediaQuery.of(context).size.width < 600
           ? AppBar(
@@ -1248,6 +1354,8 @@ class AccountsSettingsScreen extends StatefulWidget {
 class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   late final List<WhiteLabelWithUser> loggedInLabels;
   bool isLoading = true;
+  FloatyException? _error;
+
   @override
   void initState() {
     super.initState();
@@ -1255,18 +1363,66 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   }
 
   void getdata() async {
-    final loggedInLabels = await whitelabels.getLabelsAndUsers();
-    if (mounted) {
-      setState(() {
-        this.loggedInLabels = loggedInLabels;
-        isLoading = false;
-      });
+    setState(() {
+      _error = null;
+      isLoading = true;
+    });
+
+    try {
+      final labels = await whitelabels.getLabelsAndUsers();
+      if (mounted) {
+        setState(() {
+          loggedInLabels = labels;
+          isLoading = false;
+        });
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(originalError: e);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = UnexpectedException(
+            message: 'Failed to load accounts',
+            details: e.toString(),
+            originalError: e,
+          );
+          isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: MediaQuery.of(context).size.width < 600
+            ? AppBar(
+                elevation: 0,
+                toolbarHeight: 40,
+                backgroundColor: colorScheme.surfaceContainer,
+                surfaceTintColor: colorScheme.surfaceContainer,
+                title: const Text('Accounts'),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.pop(),
+                ),
+              )
+            : null,
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: getdata,
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: MediaQuery.of(context).size.width < 600
           ? AppBar(

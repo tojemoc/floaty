@@ -80,7 +80,7 @@ final GoRouter routerController = GoRouter(
             final channelName =
                 state.pathParameters['ChannelName'] ?? 'defaultChannel';
             return LiveScreen(
-              key: ValueKey(DateTime.now().millisecondsSinceEpoch),
+              key: ValueKey(channelName),
               channelName: channelName,
             );
           },
@@ -226,7 +226,12 @@ final GoRouter routerController = GoRouter(
     ),
   ],
   redirect: (BuildContext context, GoRouterState state) async {
-    final isAuthenticated = await middleware.isAuthenticated();
+    bool isAuthenticated = false;
+    try {
+      isAuthenticated = await middleware.isAuthenticated();
+    } catch (e) {
+      debugPrint('Redirect auth check failed: $e');
+    }
     final currentPath = state.uri.path;
 
     switch (currentPath) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/player/components/custom_player/custom_seekbar.dart';
 import 'package:floaty/features/player/components/custom_player/fullscreen_player.dart';
@@ -1215,10 +1216,17 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                               barrierColor: Colors.black,
                               pageBuilder:
                                   (context, animation, secondaryAnimation) {
-                                return PiPOverlayPage(
-                                  video: widget.video,
-                                  mediaService: mediaService,
-                                );
+                                return Platform.isAndroid || Platform.isIOS
+                                    ? PiPOverlayPage(
+                                        video: widget.video,
+                                        mediaService: mediaService,
+                                      )
+                                    : DesktopPipOverlay(
+                                        video: widget.video!,
+                                        postId: mediaService.currentPostId!,
+                                        live: mediaService.currentLive,
+                                        thumbnailSprite: widget.thumbnailSprite,
+                                      );
                               },
                               transitionDuration: Duration.zero,
                               reverseTransitionDuration: Duration.zero,

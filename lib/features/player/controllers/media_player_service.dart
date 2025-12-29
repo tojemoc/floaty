@@ -14,7 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:simple_pip_mode/simple_pip.dart';
+import 'package:pip/pip.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:logging/logging.dart';
@@ -94,7 +94,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   List<SeekbarChapter>? _chapters;
   String? _whitelabelName;
   WhiteLabel? _whitelabel;
-  late SimplePip _simplePip;
+  final Pip _pipController = Pip();
   bool _betterPlayerPipActive = false;
   bool get betterPlayerPipActive => _betterPlayerPipActive;
   void setBetterPlayerPipActive() {
@@ -163,7 +163,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   String? get currentAttachmentId => _currentAttachment?.id;
   dynamic get currentAttachment => _currentAttachment;
   String? get selectedMediaName => _currentMediaType?.name;
-  SimplePip get simplePip => _simplePip;
+  Pip get pipController => _pipController;
   MediaPlayerState get mediastate => state;
   List<SeekbarChapter>? get chapters => _chapters;
   // Unified stream getters
@@ -285,7 +285,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
     _log.info('MediaPlayerService initialization completed successfully');
   }
 
-  void _setupPlayerListeners() {
+  void _setupPlayerListeners() async {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     switch (loadedPlayerType!) {
@@ -322,6 +322,22 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _playbackSpeed = rate;
           _playbackSpeedController.add(rate);
         });
+        await _pipController
+            .registerStateChangedObserver(PipStateChangedObserver(
+          onPipStateChanged: (state, error) {
+            switch (state) {
+              case PipState.pipStateStarted:
+                break;
+              case PipState.pipStateStopped:
+                _pipExitController.add(true);
+                break;
+              case PipState.pipStateFailed:
+                _pipExitController.add(true);
+                print('PiP failed: $error');
+                break;
+            }
+          },
+        ));
         break;
       case PlayerType.betterPlayer:
         _betterPlayerController!.addEventsListener((progress) async {
@@ -748,38 +764,22 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
         if (Platform.isAndroid) {
-          _simplePip = SimplePip(
-            onPipEntered: () {
-              print('Entered PiP mode');
-              if (onPipEntered != null) {
-                print('Calling onPipEntered callback');
-                onPipEntered.call();
-              }
-            },
-            onPipExited: () {
-              print('Exited PiP mode');
-              print(onPipExited);
-              if (onPipExited != null) {
-                print('Calling onPipExited callback');
-                onPipExited.call();
-              }
-              // Notify listeners that PiP exited
-              try {
-                print('Notifying PiP exit listeners');
-                print(_pipExitController.hasListener);
-                print(_pipExitController.isClosed);
-                print(_pipExitController);
-                _pipExitController.add(true);
-              } catch (_) {
-                print('No listeners for PiP exit stream');
-                print(_);
-              }
-            },
-          );
-          _simplePip.enterPipMode(aspectRatio: (
-            mediaKit.state.width ?? 16,
-            mediaKit.state.height ?? 9
+          _pipController.setup(PipOptions(
+            autoEnterEnabled: false,
+            aspectRatioX: 16,
+            aspectRatioY: 9,
+            sourceRectHintLeft: 0, // Source rectangle left position
+            sourceRectHintTop: 0, // Source rectangle top position
+            sourceRectHintRight: 1080, // Source rectangle right position
+            sourceRectHintBottom: 720, // Source rectangle bottom position
+            // iOS specific options
+            sourceContentView: 0, // Source content view
+            contentView: 0, // Content view to be displayed in PiP
+            preferredContentWidth: 480, // Preferred content width
+            preferredContentHeight: 270, // Preferred content height
+            controlStyle: 1, // Control style for PiP window
           ));
+          _pipController.start();
         } else if (!Platform.isIOS) {
           changeState(MediaPlayerState.pip);
         }
@@ -1035,6 +1035,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         _log.warning('Subtitle track has no URL');
         return;
       }
+      print(url);
       final dio = Dio();
       final resp = await dio.get<String>(url,
           options: Options(responseType: ResponseType.plain));
@@ -1113,6 +1114,27 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       case PlayerType.betterPlayer:
         betterPlayerController?.pause();
         break;
+    }
+  }
+
+  Future<bool> isPipAvailable() async {
+    switch (loadedPlayerType!) {
+      case PlayerType.mediaKit:
+        if (Platform.isAndroid || Platform.isIOS) {
+          return await _pipController.isSupported();
+        } else if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+          return true;
+        } else {
+          return false;
+        }
+      case PlayerType.betterPlayer:
+        if (Platform.isAndroid) {
+          return false;
+        } else if (Platform.isIOS) {
+          return betterPlayerController != null &&
+              await _betterPlayerController!.isPictureInPictureSupported();
+        }
+        return false;
     }
   }
 

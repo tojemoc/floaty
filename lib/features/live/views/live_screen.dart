@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:core';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
@@ -10,6 +11,8 @@ import 'package:floaty/features/live/controllers/live_status_provider.dart';
 import 'package:floaty/features/live/components/live_chat.dart';
 import 'package:floaty/settings.dart';
 import 'package:floaty/whitelabels.dart';
+import 'package:floaty/shared/utils/exceptions.dart';
+import 'package:floaty/shared/views/error_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:resizable_widget/resizable_widget.dart';
@@ -586,8 +589,9 @@ class LiveScreen extends ConsumerStatefulWidget {
 }
 
 class _LiveScreenState extends ConsumerState<LiveScreen> {
-  bool isLoading = false;
+  bool isLoading = true;
   CreatorModelV3? res;
+  FloatyException? _error;
 
   @override
   void initState() {
@@ -596,17 +600,53 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
   }
 
   void init() async {
-    res = await fpApiRequests
-        .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
-            urlname: widget.channelName)
-        .first;
     setState(() {
-      isLoading = false;
+      _error = null;
+      isLoading = true;
     });
+
+    try {
+      res = await fpApiRequests
+          .getCreator((await whitelabels.getSelectedWhitelabel()).friendlyName,
+              urlname: widget.channelName)
+          .first;
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = NoInternetException(originalError: e);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = UnexpectedException(
+            message: 'Failed to load live stream',
+            details: e.toString(),
+            originalError: e,
+          );
+          isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return Scaffold(
+        body: ErrorScreen.fromException(
+          _error!,
+          onRetry: init,
+        ),
+      );
+    }
+
     return Scaffold(
       body: isLoading
           ? Center(

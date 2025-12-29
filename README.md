@@ -13,9 +13,9 @@ This repository is the tartar sauce spaghetti code of Floaty.
 | **Playback**               | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Livestream Page**        | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Livesteam playback**     | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
-| **Live Chat**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
-| **Live Chat Polls**        | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Untested                                  |
-| **Live Chat Emotes**       | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
+| **Live Chat**              | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       |                                           |
+| **Live Chat Polls**        | ✅           | ✅         | ✅         | ✅           | ✅       | Untested                                  |
+| **Live Chat Emotes**       | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       |                                           |
 | **Floatplane Settings**    | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Some settings are there.                  |
 | **Home Page**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Whenplane intergration** | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
@@ -24,8 +24,7 @@ This repository is the tartar sauce spaghetti code of Floaty.
 | **Mini Player**            | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Subtitles**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Download**               | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
-| **Login**                  | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
-| **2FA**                    | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
+| **Login**                  | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |                                        |
 | **Notifications**          | ❌           | ❌         | ❌         | ❌           | ❌       | Deciding on how to complete this.         |
 
 
