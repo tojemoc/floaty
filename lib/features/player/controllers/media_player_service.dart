@@ -54,11 +54,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   PlayerType? selectedPlayerType;
   PlayerType? loadedPlayerType;
   static Player? mediaKitPlayer;
-  BetterPlayerController? _betterPlayerController;
+  BetterPlayerController? betterPlayerController;
   GlobalKey<State<StatefulWidget>> betterPlayerGlobalKey = GlobalKey();
   Player get mediaKit => mediaKitPlayer!;
-  BetterPlayerController get betterPlayer => _betterPlayerController!;
-  BetterPlayerController? betterPlayerController;
+  BetterPlayerController get betterPlayer => betterPlayerController!;
   FloatyAudioHandler? audioHandler;
   WindowsMediaControls? windowsControls;
   final Logger _log = Logger('MediaPlayerService');
@@ -256,8 +255,8 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           mediaKitPlayer = null;
           break;
         case PlayerType.betterPlayer:
-          _betterPlayerController?.dispose(forceDispose: true);
-          _betterPlayerController = null;
+          betterPlayerController?.dispose(forceDispose: true);
+          betterPlayerController = null;
           break;
         default:
           break;
@@ -340,33 +339,33 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         ));
         break;
       case PlayerType.betterPlayer:
-        _betterPlayerController!.addEventsListener((progress) async {
+        betterPlayerController!.addEventsListener((progress) async {
           _position =
-              _betterPlayerController!.videoPlayerController!.value.position;
+              betterPlayerController!.videoPlayerController!.value.position;
           _positionController.add(_position);
           final duration =
-              _betterPlayerController!.videoPlayerController!.value.duration;
+              betterPlayerController!.videoPlayerController!.value.duration;
           if (duration != _duration) {
             _duration = duration ?? Duration.zero;
             _durationController.add(_duration);
           }
           final playing =
-              _betterPlayerController!.videoPlayerController!.value.isPlaying;
+              betterPlayerController!.videoPlayerController!.value.isPlaying;
           if (playing != _isPlaying) {
             _isPlaying = playing;
             _playingController.add(_isPlaying);
           }
-          final completed = _betterPlayerController!
-                  .videoPlayerController!.value.position ==
-              _betterPlayerController!.videoPlayerController!.value.duration;
+          final completed =
+              betterPlayerController!.videoPlayerController!.value.position ==
+                  betterPlayerController!.videoPlayerController!.value.duration;
           if (completed != _completed) {
             _completed = completed;
             _completedController.add(_completed);
           }
         });
-        _betterPlayerController!.addEventsListener((setSpeed) {
+        betterPlayerController!.addEventsListener((setSpeed) {
           final speed =
-              _betterPlayerController!.videoPlayerController!.value.speed;
+              betterPlayerController!.videoPlayerController!.value.speed;
           if (speed != _playbackSpeed) {
             _playbackSpeedController.add(speed);
             _playbackSpeed = speed;
@@ -539,7 +538,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         case PlayerType.mediaKit:
           return _videoController;
         case PlayerType.betterPlayer:
-          return _betterPlayerController;
+          return betterPlayerController;
         default:
           return null;
       }
@@ -659,7 +658,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           controller = _videoController;
           break;
         case PlayerType.betterPlayer:
-          _betterPlayerController = BetterPlayerController(
+          betterPlayerController = BetterPlayerController(
               BetterPlayerConfiguration(
                 fit: BoxFit.contain,
                 autoPlay: true,
@@ -694,9 +693,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
                 subtitles: const [],
                 videoFormat: BetterPlayerVideoFormat.hls,
               ));
-          _betterPlayerController!.setControlsEnabled(false);
+          betterPlayerController!.setControlsEnabled(false);
           _setupPlayerListeners();
-          controller = _betterPlayerController;
+          controller = betterPlayerController;
           break;
       }
       // Update media metadata
@@ -786,7 +785,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         break;
       case PlayerType.betterPlayer:
         _betterPlayerPipActive = true;
-        _betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
+        betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
         break;
     }
   }
@@ -811,10 +810,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _playingController.add(_isPlaying);
         }
       case PlayerType.betterPlayer:
-        if (_betterPlayerController != null) {
+        if (betterPlayerController != null) {
           if (_currentMediaType == MediaType.audio ||
               _currentMediaType == MediaType.video) {
-            await _betterPlayerController!.videoPlayerController!.play();
+            await betterPlayerController!.videoPlayerController!.play();
             _isPlaying = true;
             _playingController.add(_isPlaying);
           }
@@ -833,10 +832,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _playingController.add(_isPlaying);
         }
       case PlayerType.betterPlayer:
-        if (_betterPlayerController != null) {
+        if (betterPlayerController != null) {
           if (_currentMediaType == MediaType.audio ||
               _currentMediaType == MediaType.video) {
-            await _betterPlayerController!.videoPlayerController!.pause();
+            await betterPlayerController!.videoPlayerController!.pause();
             _isPlaying = false;
             _playingController.add(_isPlaying);
           }
@@ -865,7 +864,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         if (betterPlayerController != null) {
           if (_currentMediaType == MediaType.audio ||
               _currentMediaType == MediaType.video) {
-            await _betterPlayerController!.seekTo(position);
+            await betterPlayerController!.seekTo(position);
             _position = position;
           }
         }
@@ -889,7 +888,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         if (betterPlayerController != null) {
           if (_currentMediaType == MediaType.audio ||
               _currentMediaType == MediaType.video) {
-            await _betterPlayerController!.setVolume(volume);
+            await betterPlayerController!.setVolume(volume);
             _volume = volume;
             _volumeController.add(_volume);
           }
@@ -918,7 +917,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         _videoController = VideoController(mediaKit);
         break;
       case PlayerType.betterPlayer:
-        _betterPlayerController!.setResolution(quality.url);
+        betterPlayerController!.setResolution(quality.url);
         break;
     }
     _currentQuality = quality;
@@ -993,7 +992,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         await mediaKit.setRate(speed);
         break;
       case PlayerType.betterPlayer:
-        _betterPlayerController!.setSpeed(speed);
+        betterPlayerController!.setSpeed(speed);
         break;
     }
     _playbackSpeed = speed;
@@ -1132,7 +1131,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           return false;
         } else if (Platform.isIOS) {
           return betterPlayerController != null &&
-              await _betterPlayerController!.isPictureInPictureSupported();
+              await betterPlayerController!.isPictureInPictureSupported();
         }
         return false;
     }
