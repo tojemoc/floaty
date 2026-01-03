@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  connectivity_plus
   dynamic_color
   media_kit_libs_windows_video
   media_kit_video
@@ -19,6 +20,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   flutter_discord_rpc
+  flutter_local_notifications_windows
   smtc_windows
 )
 

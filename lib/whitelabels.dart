@@ -21,19 +21,22 @@ class Whitelabels {
       sort: 0,
       features: ['live', 'downloads'],
     ),
-    WhiteLabel(
-      name: 'Sauce+',
-      friendlyName: 'sauceplus',
-      domain: 'sauceplus.com',
-      logoPath: 'assets/whitelabels_logos/sauceplus.png',
-      apiUrl: 'https://www.sauceplus.com/api',
-      cookieName: '__Host-sp-sess',
-      format: 'hls.mpegts',
-      oauthconfigurl:
-          "https://auth.sauceplus.com/realms/sauceplus/.well-known/openid-configuration",
-      sort: 1,
-      features: ['freeSubscriptions', 'unifiedSubscription'],
-    ),
+
+    //TODO: RETURN SAUCE+ WHEN OAUTH IS ADDED.
+
+    // WhiteLabel(
+    //   name: 'Sauce+',
+    //   friendlyName: 'sauceplus',
+    //   domain: 'sauceplus.com',
+    //   logoPath: 'assets/whitelabels_logos/sauceplus.png',
+    //   apiUrl: 'https://www.sauceplus.com/api',
+    //   cookieName: '__Host-sp-sess',
+    //   format: 'hls.mpegts',
+    //   oauthconfigurl:
+    //       "https://auth.sauceplus.com/realms/sauceplus/.well-known/openid-configuration",
+    //   sort: 1,
+    //   features: ['freeSubscriptions', 'unifiedSubscription'],
+    // ),
     // WhiteLabel(
     //   name: "Floatplane Pre-Prod",
     //   friendlyName: "floatplanepp",

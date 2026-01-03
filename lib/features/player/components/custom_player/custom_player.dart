@@ -1476,15 +1476,16 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                     () => _currentSettingsMenu = _SettingsMenu.speed)
                 : setState(() => _currentSettingsMenu = _SettingsMenu.speed),
           ),
-        _buildSettingsMenuItem(
-          icon: Icons.grid_on,
-          title: 'Quality',
-          value: mediaService.currentQuality?.label ?? 'Auto',
-          onTap: () => setModalState != null
-              ? setModalState(
-                  () => _currentSettingsMenu = _SettingsMenu.quality)
-              : setState(() => _currentSettingsMenu = _SettingsMenu.quality),
-        ),
+        if (!mediaService.isOffline)
+          _buildSettingsMenuItem(
+            icon: Icons.grid_on,
+            title: 'Quality',
+            value: mediaService.currentQuality?.label ?? 'Auto',
+            onTap: () => setModalState != null
+                ? setModalState(
+                    () => _currentSettingsMenu = _SettingsMenu.quality)
+                : setState(() => _currentSettingsMenu = _SettingsMenu.quality),
+          ),
         if (mediaService.textTracks != null) ...[
           _buildSettingsMenuItem(
             icon: Icons.closed_caption,
@@ -1633,7 +1634,12 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                   (LanguageCodes.fromCode(entry.value['language'])).name,
                   isSelected: mediaService.subtitlesEnabled &&
                       mediaService.currentSubtitleTrackIndex == entry.key,
+                  isGenerated: entry.value['generated'],
+                  isProcessing: entry.value['processing'],
                   onTap: () async {
+                    if (entry.value['processing'] == true) {
+                      return;
+                    }
                     await mediaService.setSubtitleTrack(entry.key);
                     setState(() {});
                   },
@@ -1668,7 +1674,12 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                   (LanguageCodes.fromCode(entry.value['language'])).name,
                   isSelected: mediaService.subtitlesEnabled &&
                       mediaService.currentSubtitleTrackIndex == entry.key,
+                  isGenerated: entry.value['generated'],
+                  isProcessing: entry.value['processing'],
                   onTap: () async {
+                    if (entry.value['processing'] == true) {
+                      return;
+                    }
                     await mediaService.setSubtitleTrack(entry.key);
                     if (setModalState != null) {
                       setModalState(() {});
@@ -2335,7 +2346,10 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
   }
 
   Widget _buildSubtitleOption(String label,
-      {bool isSelected = false, VoidCallback? onTap}) {
+      {bool isSelected = false,
+      bool isProcessing = false,
+      bool isGenerated = false,
+      VoidCallback? onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2354,6 +2368,21 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
                 size: 16,
               ),
               const SizedBox(width: 12),
+              if (isProcessing) ...[
+                Icon(
+                  Icons.hourglass_top,
+                  color: Colors.white54,
+                  size: 16,
+                ),
+                const SizedBox(width: 6),
+              ] else if (isGenerated) ...[
+                Icon(
+                  Icons.bolt,
+                  color: Colors.yellow,
+                  size: 16,
+                ),
+                const SizedBox(width: 6),
+              ],
               Text(
                 label,
                 style: TextStyle(

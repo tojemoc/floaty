@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:logging/logging.dart';
 import 'package:floaty/shared/utils/exceptions.dart';
 import 'package:http/http.dart' as http;
 
@@ -66,6 +67,8 @@ class ApiResult<T> {
 
 /// Helper class for executing API calls with proper error handling
 class ApiErrorHandler {
+  static final Logger _log = Logger('ApiErrorHandler');
+
   /// Wraps an async operation with comprehensive error handling
   /// Converts various error types to appropriate FloatyException types
   static Future<ApiResult<T>> execute<T>(Future<T> Function() operation) async {
@@ -104,8 +107,7 @@ class ApiErrorHandler {
       return ApiResult.failure(e);
     } catch (e, stackTrace) {
       // Log unexpected errors for debugging
-      // ignore: avoid_print
-      print('Unexpected error: $e\n$stackTrace');
+      _log.severe('Unexpected error: $e', e, stackTrace);
       return ApiResult.failure(
         UnexpectedException(
           details: e.toString(),

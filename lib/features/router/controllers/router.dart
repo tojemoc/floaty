@@ -1,7 +1,10 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/api/utils/middleware.dart';
 import 'package:floaty/features/authentication/views/login_screen.dart';
 import 'package:floaty/features/browse/views/browse_screen.dart';
 import 'package:floaty/features/channel/views/channel_screen.dart';
+import 'package:floaty/features/download/views/fp_downloads_combined_screen.dart';
 import 'package:floaty/features/history/views/history_screen.dart';
 import 'package:floaty/features/home/views/home_screen.dart';
 import 'package:floaty/features/live/views/live_screen.dart';
@@ -11,10 +14,12 @@ import 'package:floaty/features/post/views/post_screen.dart';
 import 'package:floaty/features/profile/views/profile_screen.dart';
 import 'package:floaty/features/settings/views/settings_screen.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
+import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/features/updater/views/update_screen.dart';
 import 'package:floaty/main.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 final Middleware middleware = Middleware();
 
@@ -62,6 +67,12 @@ final GoRouter routerController = GoRouter(
           ),
         ),
         GoRoute(
+          path: '/offline',
+          builder: (context, state) => FPDownloadsCombinedScreen(
+            key: ValueKey(DateTime.now().millisecondsSinceEpoch),
+          ),
+        ),
+        GoRoute(
           path: '/channel/:ChannelName/:SubName',
           builder: (context, state) {
             final channelName =
@@ -89,9 +100,14 @@ final GoRouter routerController = GoRouter(
           path: '/post/:postid',
           builder: (context, state) {
             final postid = state.pathParameters['postid'] ?? '';
+            final extra = state.extra as Map<String, dynamic>?;
             return VideoDetailPage(
               key: ValueKey(DateTime.now().millisecondsSinceEpoch),
               postId: postid,
+              isOffline: extra?['isOffline'] as bool? ?? false,
+              offlinePost: extra?['offlinePost'] as ContentPostV3Response?,
+              offlineAttachmentId: extra?['offlineAttachmentId'] as String?,
+              offlineFilePath: extra?['offlineFilePath'] as String?,
             );
           },
         ),
@@ -213,6 +229,20 @@ final GoRouter routerController = GoRouter(
                   ),
                 ),
                 GoRoute(
+                  path: 'downloads',
+                  builder: (context, state) => DownloadsSettingsScreen(
+                    key: ValueKey(DateTime.now().millisecondsSinceEpoch),
+                  ),
+                ),
+                GoRoute(
+                  path: 'updater',
+                  builder: (BuildContext context, GoRouterState state) {
+                    return UpdateScreen(
+                      key: ValueKey(DateTime.now().millisecondsSinceEpoch),
+                    );
+                  },
+                ),
+                GoRoute(
                   path: 'developer',
                   builder: (context, state) => LogScreen(
                     key: ValueKey(DateTime.now().millisecondsSinceEpoch),
@@ -225,14 +255,111 @@ final GoRouter routerController = GoRouter(
       ],
     ),
   ],
+  // Global redirect logic for authentication
+  // This runs on every navigation to check if the user should be redirected
   redirect: (BuildContext context, GoRouterState state) async {
+    final currentPath = state.uri.path;
+
+    if (currentPath == '/update') {
+      // Always allow access to update screen
+      return null;
+    }
+    final data = await updatercontroller.getUpdate();
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (data['deployment']['version'] != packageInfo.version) {}
+    if (data['deployment']['required'] == 1) {
+      routerController.go('/update');
+    }
+
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    final isOffline = (connectivityResult.contains(ConnectivityResult.none));
+
+    // If offline and user was previously authenticated, give full app access
+    // No point trying to validate tokens when there's no internet anyway
+    if (isOffline) {
+      final wasPreviouslyAuthenticated =
+          await middleware.wasPreviouslyAuthenticated();
+
+      if (wasPreviouslyAuthenticated) {
+        // User has stored auth data and is offline - give full access
+        // They can browse their offline content, downloads, etc.
+        debugPrint(
+            'Offline mode: Allowing access to previously authenticated user');
+
+        // If they're on login screen, redirect to offline library
+        if (currentPath == '/login' || currentPath == '/') {
+          return '/offline';
+        }
+
+        // Otherwise let them navigate freely
+        return null;
+      } else {
+        // User has never authenticated and is offline - they can only access offline routes
+        final isOfflineRoute = currentPath == '/offline-library' ||
+            (currentPath.startsWith('/post/') &&
+                state.extra is Map &&
+                (state.extra as Map)['isOffline'] == true);
+
+        if (isOfflineRoute) {
+          return null; // Allow access to offline routes
+        }
+
+        // Redirect to offline library since they can't login anyway
+        return '/offline-library';
+      }
+    }
+
+    // Online - perform normal authentication checks
     bool isAuthenticated = false;
+    bool wasPreviouslyAuthenticated = false;
+
     try {
       isAuthenticated = await middleware.isAuthenticated();
+      wasPreviouslyAuthenticated =
+          await middleware.wasPreviouslyAuthenticated();
     } catch (e) {
       debugPrint('Redirect auth check failed: $e');
     }
-    final currentPath = state.uri.path;
+
+    // Special handling for users with expired tokens but who were previously authenticated
+    // This allows them to access offline content instead of being kicked to login
+    if (!isAuthenticated && wasPreviouslyAuthenticated) {
+      // User has expired tokens but was previously logged in
+      // Allow them to stay in the app but redirect to offline library
+      // unless they're already on a safe route
+
+      final isOfflineRoute = currentPath == '/offline-library' ||
+          (currentPath.startsWith('/post/') &&
+              state.extra is Map &&
+              (state.extra as Map)['isOffline'] == true);
+
+      final isSafeRoute = isOfflineRoute ||
+          currentPath == '/downloads' ||
+          currentPath == '/settings' ||
+          currentPath.startsWith('/settings/');
+
+      if (!isSafeRoute) {
+        // Redirect to offline library instead of login
+        // This way they can still watch their downloaded videos
+        debugPrint(
+            'Session expired but user has offline access - redirecting to offline library');
+        return '/offline-library';
+      }
+
+      // Already on a safe route, let them stay
+      return null;
+    }
+
+    // Allow access to offline content routes even without any authentication
+    final isOfflineRoute = currentPath == '/offline-library' ||
+        (currentPath.startsWith('/post/') &&
+            state.extra is Map &&
+            (state.extra as Map)['isOffline'] == true);
+
+    if (isOfflineRoute) {
+      // Allow access to offline routes regardless of auth status
+      return null;
+    }
 
     switch (currentPath) {
       case '/':

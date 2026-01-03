@@ -24,18 +24,30 @@ import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
 import 'dart:convert';
 import 'package:floaty/settings.dart';
-import 'package:background_downloader/background_downloader.dart';
-import 'package:floaty/features/api/repositories/download_manager.dart';
+import 'package:floaty/features/download/components/fp_download_dialog.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 enum ScreenLayout { small, medium, wide }
 
 class VideoDetailPage extends ConsumerStatefulWidget {
-  const VideoDetailPage({super.key, required this.postId, this.t, this.a});
+  const VideoDetailPage({
+    super.key,
+    required this.postId,
+    this.t,
+    this.a,
+    this.isOffline = false,
+    this.offlinePost,
+    this.offlineAttachmentId,
+    this.offlineFilePath,
+  });
   final String postId;
   final int? t;
   final String? a;
+  final bool isOffline;
+  final ContentPostV3Response? offlinePost;
+  final String? offlineAttachmentId;
+  final String? offlineFilePath;
   @override
   ConsumerState<VideoDetailPage> createState() => _VideoDetailPageState();
 }
@@ -71,7 +83,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   final List<CommentModel> _comments = [];
   bool _isLoadingComments = false;
   bool _hasMoreComments = true;
-  String userAgent = 'FloatyClient/error, CFNetwork';
+  String userAgent = 'FloatyClient/error';
   PackageInfo? packageInfo;
   @override
   void initState() {
@@ -79,6 +91,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     initUserAgent();
     postId = widget.postId;
     _mediaContentFuture = Future(() async {
+      // If offline mode, skip waiting for provider to load
+      if (widget.isOffline) {
+        debugPrint('[FP] Loading offline video');
+        return _buildMediaContent();
+      }
+
       // Wait for post to be loaded
       if (postId.isEmpty) {
         postId = mediaService.currentPostId ?? '';
@@ -92,7 +110,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return _buildMediaContent();
     });
     _commentController.addListener(_updateCharCount);
-    _loadComments();
+
+    // Don't load comments in offline mode
+    if (!widget.isOffline) {
+      _loadComments();
+    }
   }
 
   Future<void> initUserAgent() async {
@@ -100,7 +122,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor';
   }
 
   //whenplane intergration
@@ -203,6 +225,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           _selectedAttachmentId ?? '',
           _mediaService.currentPosition.inSeconds,
           selectedMediaType.name,
+          isOffline: _mediaService.isOffline,
         );
       }
     });
@@ -237,7 +260,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     _mediaService = ref.watch(mediaPlayerServiceProvider.notifier);
-    final postState = ref.watch(postProvider(widget.postId));
+
+    // In offline mode, skip provider and use offline data
+    final dynamic postState = widget.isOffline
+        ? _PostStateOffline(widget.offlinePost!)
+        : ref.watch(postProvider(widget.postId));
+
     menuItems = ref.watch(menuItemsProvider);
     if (!Platform.isAndroid && !Platform.isIOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -258,8 +286,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       });
     }
 
-    // Show error screen if there's an error and no post data
-    if (postState.hasError && postState.post == null) {
+    // Show error screen if there's an error and no post data (skip in offline mode)
+    if (!widget.isOffline && postState.hasError && postState.post == null) {
       return Scaffold(
         body: postState.exception != null
             ? ErrorScreen.fromException(
@@ -367,10 +395,72 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     mediaState = ref.read(mediaPlayerServiceProvider);
     List<Map<String, dynamic>> textTrack = [];
     try {
+      // Handle offline mode
+      if (widget.isOffline &&
+          widget.offlinePost != null &&
+          widget.offlineFilePath != null) {
+        debugPrint('[FP] Building offline media player');
+
+        final post = widget.offlinePost!;
+        _selectedAttachmentId =
+            widget.offlineAttachmentId ?? post.attachmentOrder.firstOrNull;
+
+        // Find the attachment
+        for (final video in post.videoAttachments) {
+          if (video.id == _selectedAttachmentId) {
+            selectedAttachment = video;
+            selectedMediaType = MediaType.video;
+            break;
+          }
+        }
+        if (selectedAttachment == null) {
+          for (final audio in post.audioAttachments) {
+            if (audio.id == _selectedAttachmentId) {
+              selectedAttachment = audio;
+              selectedMediaType = MediaType.audio;
+              break;
+            }
+          }
+        }
+
+        // Get saved offline progress for this attachment
+        int savedProgress = 0;
+        if (_selectedAttachmentId != null &&
+            _selectedAttachmentId!.isNotEmpty) {
+          savedProgress =
+              await fpApiRequests.getOfflineProgress(_selectedAttachmentId!);
+        }
+
+        // Use local file path instead of streaming URL
+        return MediaPlayerWidget(
+          whitelabelName:
+              (await whitelabels.getSelectedWhitelabel()).friendlyName,
+          contextBuild: context.mounted ? context : context,
+          mediaUrl: 'file://${widget.offlineFilePath}',
+          discoverable: post.creator?.discoverable ?? false,
+          live: false,
+          mediaType: selectedMediaType,
+          attachment: selectedAttachment,
+          qualities: null, // No quality switching for offline videos
+          initialState: MediaPlayerState.main,
+          startFrom: widget.t ?? savedProgress,
+          textTracks: null, // No text tracks for offline videos
+          title: post.title ?? 'Unknown Title',
+          artist: post.channel?.title ?? 'Unknown Creator',
+          artistImage: post.channel?.icon?.path ?? '',
+          postId: widget.postId,
+          artworkUrl: post.thumbnail?.path ?? '',
+          timelineSprite: null, // No timeline sprite for offline videos
+          offlinePost: widget.offlinePost,
+          offlineAttachmentId: widget.offlineAttachmentId,
+          offlineFilePath: widget.offlineFilePath,
+        );
+      }
+
       // Check if the media service is already playing this exact post
       // This handles returning from PiP/mini player without re-initializing
-      final hasActivePlayer = mediaService.videoController != null ||
-          mediaService.betterPlayerController != null;
+      final hasActivePlayer = mediaService.videoController != null;
+      //||mediaService.betterPlayerController != null;
       if (mediaService.currentPostId == widget.postId && hasActivePlayer) {
         // Already playing this post - return existing player without re-initialization
         final postState = ref.watch(postProvider(widget.postId));
@@ -407,6 +497,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         }
 
         // Return MediaPlayerWidget with same parameters - it will detect same URL and skip init
+        debugPrint(
+            'POST_SCREEN: Reusing existing player for post ${widget.postId}');
+        debugPrint(
+            'POST_SCREEN: mediaService.isOffline=${mediaService.isOffline}');
+        debugPrint(
+            'POST_SCREEN: mediaService.offlinePost=${mediaService.offlinePost != null}');
+        debugPrint(
+            'POST_SCREEN: mediaService.offlineAttachmentId=${mediaService.offlineAttachmentId}');
+        debugPrint(
+            'POST_SCREEN: mediaService.offlineFilePath=${mediaService.offlineFilePath}');
+        debugPrint(
+            'POST_SCREEN: mediaService.currentMediaUrl=${mediaService.currentMediaUrl}');
         return MediaPlayerWidget(
           whitelabelName:
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
@@ -426,6 +528,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           postId: widget.postId,
           artworkUrl: mediaService.currentThumbnailUrl ?? '',
           timelineSprite: mediaService.currentTimelineSprite,
+          offlinePost: mediaService.offlinePost,
+          offlineAttachmentId: mediaService.offlineAttachmentId,
+          offlineFilePath: mediaService.offlineFilePath,
         );
       }
 
@@ -481,10 +586,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       List<VideoQuality>? qualities;
       if (selectedAttachment != null) {
         if (selectedAttachment is VideoAttachmentModel) {
-          final res = await fpApiRequests.getDelivery(
+          final deliveryResponse = await fpApiRequests.getDelivery(
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
               'onDemand',
               _selectedAttachmentId!);
+          final res = deliveryResponse['body'] as String;
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, true);
           final prores = await fpApiRequests.getContent(
@@ -516,10 +622,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             mediaUrl = defaultQuality.url;
           }
         } else if (selectedAttachment is AudioAttachmentModel) {
-          final res = await fpApiRequests.getDelivery(
+          final deliveryResponse = await fpApiRequests.getDelivery(
               (await whitelabels.getSelectedWhitelabel()).friendlyName,
               'onDemand',
               _selectedAttachmentId!);
+          final res = deliveryResponse['body'] as String;
           final decoded = jsonDecode(res);
           qualities = await fetchVideoQualities(decoded, false);
           final prores = await fpApiRequests.getContent(
@@ -668,150 +775,57 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
   }
 
-// here you see wasted time because floatplane download api v3 doesnt actually work even if
-// you fix the urls not matching because the token v3 generates is invalid
-  // String convertV3ToV2(String v3Url) {  //   Uri uri = Uri.parse(v3Url);
-  //   String? token = uri.queryParameters['token'];
-  //   String? expires = uri.queryParameters['expires'];
-  //   String basePath =
-  //       uri.pathSegments.take(uri.pathSegments.length - 1).join('/');
-  //   String fileName = uri.pathSegments[uri.pathSegments.length - 2];`
-  //   String v2Url =
-  //       '${uri.scheme}://${uri.host}/$basePath/$fileName.mp4?token=$token&expires=$expires';
-  //   return v2Url;
-  // }
   List<Widget> _buildInteractionButtons(
       ThemeData theme, ColorScheme colorScheme) {
-    final postState = ref.watch(postProvider(widget.postId));
+    final dynamic postState = widget.isOffline
+        ? _PostStateOffline(widget.offlinePost!)
+        : ref.watch(postProvider(widget.postId));
     final post = postState.post;
-    final downloadNotifier = ref.read(downloadOptionsProvider.notifier);
+
+    // In offline mode, disable download (already downloaded) and like/dislike
+    if (widget.isOffline) {
+      return [
+        IconButton(
+          icon: const Icon(Icons.offline_pin),
+          onPressed: null, // Disabled
+          tooltip: 'Offline Mode',
+        ),
+        const SizedBox(width: 5),
+        TextButton.icon(
+          style: TextButton.styleFrom(
+            splashFactory: InkRipple.splashFactory,
+            overlayColor: Colors.grey[800],
+          ),
+          icon: const Icon(Icons.thumb_up_outlined),
+          label: Text('${postState.likeCount}'),
+          onPressed: null, // Disabled in offline mode
+        ),
+        const SizedBox(width: 5),
+        TextButton.icon(
+          style: TextButton.styleFrom(
+            splashFactory: InkRipple.splashFactory,
+            overlayColor: Colors.grey[800],
+          ),
+          icon: const Icon(Icons.thumb_down_outlined),
+          label: Text('${postState.dislikeCount}'),
+          onPressed: null, // Disabled in offline mode
+        ),
+      ];
+    }
+
     // Show download button if there's a media attachment
     final hasMediaAttachment = post != null &&
-        (post.videoAttachments.isNotEmpty ||
-            post.audioAttachments.isNotEmpty ||
-            post.pictureAttachments.isNotEmpty);
+        (post.videoAttachments.isNotEmpty || post.audioAttachments.isNotEmpty);
+
     Future<void> showDownloadDialog() async {
-      downloadNotifier.reset();
-      if (selectedMediaType == MediaType.image) {
-        downloadNotifier.setOptions([
-          DownloadOption(url: mediaUrl!, label: 'PNG'),
-        ]);
-      } else {
-        downloadNotifier.setLoading();
-        final data = await fpApiRequests.getDeliveryv2(
-            (await whitelabels.getSelectedWhitelabel()).friendlyName,
-            'download',
-            _selectedAttachmentId ?? '');
-        if (data != 'Response StatusCode: 429, Body: error code: 1015') {
-          final dedata = jsonDecode(data);
-          final options = <DownloadOption>[];
-          String baseUrl = dedata['cdn'];
-          for (var quality in dedata['resource']['data']['qualityLevels']) {
-            String qualityName = quality['name'];
-            String qualityLabel = quality['label'];
-            String videoFile = dedata['resource']['data']['qualityLevelParams']
-                [qualityName]['1'];
-            String token = dedata['resource']['data']['qualityLevelParams']
-                [qualityName]['2'];
-            String resourceUri = dedata['resource']['uri']
-                .replaceFirst('{qualityLevelParams.1}', videoFile)
-                .replaceFirst('{qualityLevelParams.2}', token);
-            String curl = '$baseUrl$resourceUri';
-            options.add(DownloadOption(url: curl, label: qualityLabel));
-          }
-          downloadNotifier.setOptions(options);
-        } else {
-          downloadNotifier.setError('Rate limit exceeded');
-        }
-      }
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Download Options'),
-          content: SizedBox(
-            width: 300,
-            child: Consumer(
-              builder: (context, ref, _) {
-                final state = ref.watch(downloadOptionsProvider);
-                if (state.isLoading) {
-                  return const SizedBox(
-                    height: 100,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (state.error != null) {
-                  return ErrorScreen(message: state.error!);
-                }
-                return SizedBox(
-                  height: 200,
-                  child: ListView.builder(
-                    itemCount: state.options.length,
-                    itemBuilder: (context, index) {
-                      final option = state.options[index];
-                      return ListTile(
-                        dense: true,
-                        title: Text(option.label),
-                        onTap: () async {
-                          Navigator.of(context).maybePop();
-                          // Check permissions before starting download
-                          final hasPermissions = await DownloadManager()
-                              .checkAndRequestPermissions();
-                          if (!hasPermissions) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Permission denied for downloads')),
-                              );
-                            }
-                            return;
-                          }
-                          final task = DownloadTask(
-                            url: option.url,
-                            filename:
-                                '${mediaService.currentAttachment.title} (${option.label})${mediaService.currentAttachment is VideoAttachmentModel ? '.mp4' : mediaService.currentAttachment is AudioAttachmentModel ? '.mp3' : '.png'}',
-                            baseDirectory: BaseDirectory.applicationDocuments,
-                            updates: Updates.statusAndProgress,
-                            requiresWiFi: true,
-                            headers: {
-                              'User-Agent': userAgent,
-                            },
-                          );
-                          try {
-                            await FileDownloader().enqueue(task);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'Started downloading ${option.label}')),
-                              );
-                            }
-                            // Move file to downloads after completion
-                            await DownloadManager().moveToDownloads(task);
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Failed to start download')),
-                              );
-                            }
-                          }
-                        },
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
+      if (post == null || selectedAttachment == null) return;
+
+      await FPDownloadDialog.show(
+        context,
+        post: post,
+        attachment: selectedAttachment,
+        creatorName: post.creator?.title ?? 'Unknown',
+        channelName: post.channel?.title,
       );
     }
 
@@ -1002,7 +1016,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   Widget _buildMainContent(
       BoxConstraints constraints, ThemeData theme, ColorScheme colorScheme) {
-    final postState = ref.watch(postProvider(widget.postId));
+    final dynamic postState = widget.isOffline
+        ? _PostStateOffline(widget.offlinePost!)
+        : ref.watch(postProvider(widget.postId));
     final post = postState.post;
     if (post == null) return const SizedBox.shrink();
     Future(() => rootLayoutKey.currentState?.setAppBar(Text(post.title ?? '')));
@@ -1402,271 +1418,293 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             ),
           ),
         Divider(),
-        Row(
-          children: [
-            if (rootLayoutKey.currentState?.user?.profileImage?.path != null)
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.grey[800],
-                backgroundImage: NetworkImage(
-                  rootLayoutKey.currentState?.user?.profileImage?.path ?? '',
+        // Hide comments section in offline mode
+        if (!widget.isOffline) ...[
+          Row(
+            children: [
+              if (rootLayoutKey.currentState?.user?.profileImage?.path != null)
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.grey[800],
+                  backgroundImage: NetworkImage(
+                    rootLayoutKey.currentState?.user?.profileImage?.path ?? '',
+                  ),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    TextField(
+                      controller: _commentController,
+                      onChanged: (value) {
+                        setState(() {
+                          _currentLength = value.length;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Write a Comment',
+                        hintStyle: TextStyle(color: Colors.grey[400]),
+                        border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey[800]!),
+                        ),
+                      ),
+                    ),
+                    AnimatedCrossFade(
+                      firstChild: const SizedBox.shrink(),
+                      secondChild: Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Row(
+                          children: [
+                            Text(
+                              '$_currentLength/4500',
+                              style: TextStyle(
+                                color: _currentLength > 4500
+                                    ? Colors.red
+                                    : Colors.grey[400],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _commentController.clear();
+                                  _currentLength = 0;
+                                });
+                              },
+                              style: TextButton.styleFrom(
+                                splashFactory: InkRipple.splashFactory,
+                                overlayColor: Colors.grey[800],
+                              ),
+                              child: const Text(
+                                'CANCEL',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed:
+                                  _currentLength >= 3 && _currentLength <= 4500
+                                      ? () async {
+                                          final text = _commentController.text;
+                                          _commentController.clear();
+                                          final comment =
+                                              await fpApiRequests.comment(
+                                                  (await whitelabels
+                                                          .getSelectedWhitelabel())
+                                                      .friendlyName,
+                                                  post.id ?? '',
+                                                  text);
+                                          if (comment != null) {
+                                            setState(() {
+                                              _comments.insert(0, comment);
+                                            });
+                                          }
+                                        }
+                                      : null,
+                              style: TextButton.styleFrom(
+                                splashFactory: InkRipple.splashFactory,
+                                overlayColor: Colors.grey[800],
+                              ),
+                              child: Text(
+                                'COMMENT',
+                                style: TextStyle(
+                                  color: _currentLength >= 3 &&
+                                          _currentLength <= 4500
+                                      ? Colors.white
+                                      : Colors.grey[600],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      crossFadeState: _currentLength > 0
+                          ? CrossFadeState.showSecond
+                          : CrossFadeState.showFirst,
+                      duration: const Duration(milliseconds: 200),
+                    ),
+                  ],
                 ),
               ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  TextField(
-                    controller: _commentController,
-                    onChanged: (value) {
-                      setState(() {
-                        _currentLength = value.length;
-                      });
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Text(
+                '${post.comments ?? 0} Comments',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(width: 6),
+              DropdownButton<String>(
+                value: _getSortDisplayText(),
+                hint: const Text(
+                  'Sort Comments',
+                ),
+                icon: const Icon(Icons.sort),
+                underline: Container(),
+                items: [
+                  DropdownMenuItem(
+                    value: 'newest',
+                    child: const Text('Newest First'),
+                    onTap: () {
+                      sortBy = 'createdAt';
+                      sortOrder = 'DESC';
+                      fetchafter = '0';
+                      _loadComments();
                     },
-                    decoration: InputDecoration(
-                      hintText: 'Write a Comment',
-                      hintStyle: TextStyle(color: Colors.grey[400]),
-                      border: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.grey[800]!),
-                      ),
-                    ),
                   ),
-                  AnimatedCrossFade(
-                    firstChild: const SizedBox.shrink(),
-                    secondChild: Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Row(
-                        children: [
-                          Text(
-                            '$_currentLength/4500',
-                            style: TextStyle(
-                              color: _currentLength > 4500
-                                  ? Colors.red
-                                  : Colors.grey[400],
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () {
+                  DropdownMenuItem(
+                    value: 'oldest',
+                    child: const Text('Oldest First'),
+                    onTap: () {
+                      sortBy = 'createdAt';
+                      sortOrder = 'ASC';
+                      fetchafter = '0';
+                      _loadComments();
+                    },
+                  ),
+                  DropdownMenuItem(
+                    value: 'highest_rated',
+                    child: const Text('Highest Rated'),
+                    onTap: () {
+                      sortBy = 'score';
+                      sortOrder = 'DESC';
+                      fetchafter = '0';
+                      _loadComments();
+                    },
+                  ),
+                  DropdownMenuItem(
+                    value: 'lowest_rated',
+                    child: const Text('Lowest Rated'),
+                    onTap: () {
+                      sortBy = 'score';
+                      sortOrder = 'ASC';
+                      fetchafter = '0';
+                      _loadComments();
+                    },
+                  ),
+                ],
+                onChanged: (String? value) {},
+              ),
+            ],
+          ),
+          Column(
+            children: [
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _comments.length,
+                itemBuilder: (context, index) {
+                  return CommentHolder(
+                    key: ValueKey(_comments[index].id),
+                    comment: _comments[index],
+                    content: post,
+                  );
+                },
+              ),
+              if (_comments.isEmpty)
+                const Center(
+                  child: Text("No comments found."),
+                ),
+              if (_hasMoreComments)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: ElevatedButton(
+                    onPressed: _isLoadingComments
+                        ? null
+                        : () async {
+                            setState(() {
+                              _isLoadingComments = true;
+                            });
+                            try {
+                              dynamic items;
+                              if (fetchafter != '0') {
+                                items = await fpApiRequests.getComments(
+                                  (await whitelabels.getSelectedWhitelabel())
+                                      .friendlyName,
+                                  widget.postId,
+                                  _pageSize,
+                                  sortBy,
+                                  sortOrder,
+                                  fetchAfter: fetchafter,
+                                );
+                              } else {
+                                items = await fpApiRequests.getComments(
+                                  (await whitelabels.getSelectedWhitelabel())
+                                      .friendlyName,
+                                  widget.postId,
+                                  _pageSize,
+                                  sortBy,
+                                  sortOrder,
+                                );
+                              }
+                              if (!mounted) return;
                               setState(() {
-                                _commentController.clear();
-                                _currentLength = 0;
+                                _comments.addAll(items);
+                                _hasMoreComments = items.length >= _pageSize;
+                                if (items.isNotEmpty) {
+                                  fetchafter = items.last.id;
+                                }
+                                _isLoadingComments = false;
                               });
-                            },
-                            style: TextButton.styleFrom(
-                              splashFactory: InkRipple.splashFactory,
-                              overlayColor: Colors.grey[800],
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() {
+                                  _isLoadingComments = false;
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        'An error occurred loading comments'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    child: _isLoadingComments
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
-                            child: const Text(
-                              'CANCEL',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            onPressed: _currentLength >= 3 &&
-                                    _currentLength <= 4500
-                                ? () async {
-                                    final text = _commentController.text;
-                                    _commentController.clear();
-                                    final comment = await fpApiRequests.comment(
-                                        (await whitelabels
-                                                .getSelectedWhitelabel())
-                                            .friendlyName,
-                                        post.id ?? '',
-                                        text);
-                                    if (comment != null) {
-                                      setState(() {
-                                        _comments.insert(0, comment);
-                                      });
-                                    }
-                                  }
-                                : null,
-                            style: TextButton.styleFrom(
-                              splashFactory: InkRipple.splashFactory,
-                              overlayColor: Colors.grey[800],
-                            ),
-                            child: Text(
-                              'COMMENT',
-                              style: TextStyle(
-                                color: _currentLength >= 3 &&
-                                        _currentLength <= 4500
-                                    ? Colors.white
-                                    : Colors.grey[600],
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    crossFadeState: _currentLength > 0
-                        ? CrossFadeState.showSecond
-                        : CrossFadeState.showFirst,
-                    duration: const Duration(milliseconds: 200),
+                          )
+                        : const Text('Load More Comments'),
+                  ),
+                ),
+            ],
+          ),
+        ], // End of comments section conditional (offline mode)
+        // Show offline mode message when comments are disabled
+        if (widget.isOffline)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.offline_pin, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Comments unavailable in offline mode',
+                    style: TextStyle(color: Colors.grey[600]),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Text(
-              '${post.comments ?? 0} Comments',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            SizedBox(width: 6),
-            DropdownButton<String>(
-              value: _getSortDisplayText(),
-              hint: const Text(
-                'Sort Comments',
-              ),
-              icon: const Icon(Icons.sort),
-              underline: Container(),
-              items: [
-                DropdownMenuItem(
-                  value: 'newest',
-                  child: const Text('Newest First'),
-                  onTap: () {
-                    sortBy = 'createdAt';
-                    sortOrder = 'DESC';
-                    fetchafter = '0';
-                    _loadComments();
-                  },
-                ),
-                DropdownMenuItem(
-                  value: 'oldest',
-                  child: const Text('Oldest First'),
-                  onTap: () {
-                    sortBy = 'createdAt';
-                    sortOrder = 'ASC';
-                    fetchafter = '0';
-                    _loadComments();
-                  },
-                ),
-                DropdownMenuItem(
-                  value: 'highest_rated',
-                  child: const Text('Highest Rated'),
-                  onTap: () {
-                    sortBy = 'score';
-                    sortOrder = 'DESC';
-                    fetchafter = '0';
-                    _loadComments();
-                  },
-                ),
-                DropdownMenuItem(
-                  value: 'lowest_rated',
-                  child: const Text('Lowest Rated'),
-                  onTap: () {
-                    sortBy = 'score';
-                    sortOrder = 'ASC';
-                    fetchafter = '0';
-                    _loadComments();
-                  },
-                ),
-              ],
-              onChanged: (String? value) {},
-            ),
-          ],
-        ),
-        Column(
-          children: [
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _comments.length,
-              itemBuilder: (context, index) {
-                return CommentHolder(
-                  key: ValueKey(_comments[index].id),
-                  comment: _comments[index],
-                  content: post,
-                );
-              },
-            ),
-            if (_comments.isEmpty)
-              const Center(
-                child: Text("No comments found."),
-              ),
-            if (_hasMoreComments)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: ElevatedButton(
-                  onPressed: _isLoadingComments
-                      ? null
-                      : () async {
-                          setState(() {
-                            _isLoadingComments = true;
-                          });
-                          try {
-                            dynamic items;
-                            if (fetchafter != '0') {
-                              items = await fpApiRequests.getComments(
-                                (await whitelabels.getSelectedWhitelabel())
-                                    .friendlyName,
-                                widget.postId,
-                                _pageSize,
-                                sortBy,
-                                sortOrder,
-                                fetchAfter: fetchafter,
-                              );
-                            } else {
-                              items = await fpApiRequests.getComments(
-                                (await whitelabels.getSelectedWhitelabel())
-                                    .friendlyName,
-                                widget.postId,
-                                _pageSize,
-                                sortBy,
-                                sortOrder,
-                              );
-                            }
-                            if (!mounted) return;
-                            setState(() {
-                              _comments.addAll(items);
-                              _hasMoreComments = items.length >= _pageSize;
-                              if (items.isNotEmpty) {
-                                fetchafter = items.last.id;
-                              }
-                              _isLoadingComments = false;
-                            });
-                          } catch (error) {
-                            if (mounted) {
-                              setState(() {
-                                _isLoadingComments = false;
-                              });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'An error occurred loading comments'),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                  child: _isLoadingComments
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text('Load More Comments'),
-                ),
-              ),
-          ],
-        ),
+          ),
       ],
     );
   }
@@ -1718,6 +1756,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   Widget _buildRecommendedSection(BoxConstraints constraints,
       {required ScreenLayout layout}) {
+    // Hide recommended section in offline mode
+    if (widget.isOffline) {
+      return SizedBox.shrink();
+    }
+
     final width = layout == ScreenLayout.wide ? 300.0 : constraints.maxWidth;
     final padding = constraints.maxWidth <= 450 ? 4.0 : 2.0;
     return SizedBox(
@@ -1787,4 +1830,35 @@ class _PostWidgetFactory extends WidgetFactory with UrlLauncherFactory {
     }
     super.parse(tree);
   }
+}
+
+// Simple offline post state wrapper
+class _PostStateOffline {
+  final ContentPostV3Response post;
+
+  _PostStateOffline(this.post);
+
+  bool get isLoading => false;
+  bool get hasError => false;
+  String get error => '';
+  Exception? get exception => null;
+  int get likeCount => post.likes ?? 0;
+  int get dislikeCount => post.dislikes ?? 0;
+
+  // Offline mode doesn't track user interactions
+  bool get isLiked => false;
+  bool get isDisliked => false;
+
+  // Description expansion state
+  bool get isExpanded => false;
+
+  // WAN Show specific properties (disabled in offline mode)
+  bool get isWan => false;
+  String? get preShowRange => null;
+  String? get mainShowRange => null;
+  String? get preShowDuration => null;
+  String? get mainShowDuration => null;
+  bool get hundredpercentlate => false;
+  String? get letsBeHonestItsLateTime => null;
+  String? get latenessString => null;
 }

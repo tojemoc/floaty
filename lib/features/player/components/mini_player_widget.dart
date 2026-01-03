@@ -1,10 +1,8 @@
-import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
-import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:text_scroll/text_scroll.dart';
 
@@ -44,16 +42,16 @@ class MiniPlayerWidget extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: () async {
           mediaService.changeState(MediaPlayerState.main);
-          if (!live) {
-            fpApiRequests.iprogress(
-              (await whitelabels.getSelectedWhitelabel()).friendlyName,
-              mediaService.currentAttachmentId ?? '',
-              mediaService.currentPosition.inSeconds,
-              mediaService.selectedMediaName ?? '',
-            );
-          }
           if (live) {
             context.go('/live/$postId');
+          } else if (mediaService.isOffline) {
+            // For offline videos, pass the offline data as extras
+            context.go('/post/$postId', extra: {
+              'isOffline': true,
+              'offlinePost': mediaService.offlinePost,
+              'offlineAttachmentId': mediaService.offlineAttachmentId,
+              'offlineFilePath': mediaService.offlineFilePath,
+            });
           } else {
             context.go('/post/$postId');
           }

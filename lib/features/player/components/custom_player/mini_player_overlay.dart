@@ -1,7 +1,5 @@
 import 'package:better_player_plus/better_player_plus.dart';
-import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
-import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,7 +28,6 @@ class MiniPlayerOverlay extends ConsumerWidget {
     final artist = mediaService.currentArtist ?? '';
     final thumbnailUrl = mediaService.currentThumbnailUrl;
     final videoController = mediaService.videoController;
-    final betterPlayerController = mediaService.betterPlayerController;
 
     return Material(
       elevation: 8,
@@ -43,8 +40,7 @@ class MiniPlayerOverlay extends ConsumerWidget {
           child: Row(
             children: [
               // Video/Thumbnail preview
-              _buildPreview(
-                  videoController, betterPlayerController, thumbnailUrl),
+              _buildPreview(videoController, null, thumbnailUrl),
               // Title and controls
               Expanded(
                 child: Padding(
@@ -189,15 +185,6 @@ class MiniPlayerOverlay extends ConsumerWidget {
 
     mediaService.changeState(MediaPlayerState.main);
 
-    if (!live) {
-      fpApiRequests.iprogress(
-        (await whitelabels.getSelectedWhitelabel()).friendlyName,
-        mediaService.currentAttachmentId ?? '',
-        mediaService.currentPosition.inSeconds,
-        mediaService.selectedMediaName ?? '',
-      );
-    }
-
     if (context.mounted) {
       // Only navigate if not already on the correct page
       final currentPath = GoRouterState.of(context).uri.path;
@@ -206,6 +193,14 @@ class MiniPlayerOverlay extends ConsumerWidget {
       if (!currentPath.contains(postId)) {
         if (live) {
           context.go('/live/$postId');
+        } else if (mediaService.isOffline) {
+          // For offline videos, pass the offline data as extras
+          context.go('/post/$postId', extra: {
+            'isOffline': true,
+            'offlinePost': mediaService.offlinePost,
+            'offlineAttachmentId': mediaService.offlineAttachmentId,
+            'offlineFilePath': mediaService.offlineFilePath,
+          });
         } else {
           context.go('/post/$postId');
         }

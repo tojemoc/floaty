@@ -129,7 +129,12 @@ class LoginManager {
         final userId = result.userInfo?['sub'] ?? 'oauth2_user';
         await whitelabels
             .addLoggedInLabel('${whiteLabel.friendlyName}-$userId');
-
+        // Sync offline progress after successful login
+        try {
+          await fpApiRequests.syncOfflineProgress(whiteLabel.friendlyName);
+        } catch (e) {
+          debugPrint('Failed to sync offline progress after login: \$e');
+        }
         logincomplete();
       } else if (result.isCancelled) {
         // User cancelled authentication

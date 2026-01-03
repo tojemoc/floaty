@@ -2,6 +2,8 @@ import 'package:floaty/whitelabels.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/logs/repositories/log_service.dart';
 import 'package:floaty/features/authentication/services/oauth2_service.dart';
+import 'package:hive_ce/hive.dart';
+import 'package:logging/logging.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -102,7 +104,8 @@ class _OAuth2HttpClient extends http.BaseClient {
 }
 
 class FPApiRequests {
-  String userAgent = 'FloatyClient/error, CFNetwork';
+  final Logger _log = Logger('FPApiRequests');
+  String userAgent = 'FloatyClient/error';
   late final PersistCookieJar cookieJar;
   late final OAuth2Service _oauth2Service;
   final Map<String, http.Client> _oauth2Clients = {};
@@ -153,7 +156,7 @@ class FPApiRequests {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor';
     final dir = await getApplicationSupportDirectory();
 
     _oauth2Service = OAuth2Service.instance;
@@ -795,26 +798,33 @@ class FPApiRequests {
     return response;
   }
 
-  Future<String> getDelivery(
+  Future<Map<String, dynamic>> getDelivery(
       String whitelabel, String scenario, String entityId) async {
     try {
-      final res = await fetchData(
-          'v3/delivery/info?scenario=$scenario&entityId=$entityId&outputKind=hls.mpegts',
-          whitelabel);
-      return res;
-    } catch (e) {
-      return '';
-    }
-  }
+      final whiteLabel = whitelabels.getWhitelabel(whitelabel);
+      final client = await getHttpClient(whiteLabel.friendlyName);
+      final url = Uri.parse(
+          '${whiteLabel.apiUrl}/v3/delivery/info?scenario=$scenario&entityId=$entityId${scenario != 'download' ? '&outputKind=hls.mpegts' : ''}');
 
-  Future<String> getDeliveryv2(
-      String whitelabel, String type, String guid) async {
-    try {
-      final res =
-          await fetchData('v2/cdn/delivery?type=$type&guid=$guid', whitelabel);
-      return res;
+      final response = await client.get(
+        url,
+        headers: {'User-Agent': userAgent},
+      );
+
+      _log.info(scenario != 'download' ? 'HLS Delivery URL:' : 'Download URL:');
+      _log.fine(response.body);
+
+      return {
+        'body': response.body,
+        'headers': response.headers,
+        'statusCode': response.statusCode,
+      };
     } catch (e) {
-      return '';
+      return {
+        'body': '',
+        'headers': <String, String>{},
+        'statusCode': 500,
+      };
     }
   }
 
@@ -841,9 +851,86 @@ class FPApiRequests {
   Timer? _progressDebounceTimer;
   final Map<String, Map<String, dynamic>> _pendingProgress = {};
 
+  /// Store offline video progress locally
+  Future<void> _storeOfflineProgress(
+      String attachmentId, int progress, String contentType) async {
+    try {
+      final box = await Hive.openBox('offline_progress');
+      await box.put(attachmentId, {
+        'progress': progress,
+        'contentType': contentType,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      _log.info('Stored offline progress for $attachmentId: $progress seconds');
+    } catch (e) {
+      _log.warning('Failed to store offline progress: $e');
+    }
+  }
+
+  /// Get stored offline progress for a specific attachment
+  Future<int> getOfflineProgress(String attachmentId) async {
+    try {
+      final box = await Hive.openBox('offline_progress');
+      final data = box.get(attachmentId) as Map?;
+      if (data != null && data['progress'] is int) {
+        _log.info(
+            'Retrieved offline progress for $attachmentId: ${data['progress']} seconds');
+        return data['progress'] as int;
+      }
+    } catch (e) {
+      _log.warning('Failed to get offline progress: $e');
+    }
+    return 0;
+  }
+
+  /// Sync all stored offline progress to Floatplane
+  Future<void> syncOfflineProgress(String whitelabel) async {
+    try {
+      final box = await Hive.openBox('offline_progress');
+      final keys = box.keys.toList();
+
+      if (keys.isEmpty) {
+        _log.info('No offline progress to sync');
+        return;
+      }
+
+      _log.info('Syncing ${keys.length} offline progress entries...');
+      int synced = 0;
+
+      for (final key in keys) {
+        try {
+          final data = box.get(key) as Map?;
+          if (data != null) {
+            await postData('v3/content/progress', whitelabel, {
+              'id': key,
+              'contentType': data['contentType'],
+              'progress': data['progress'],
+            });
+            await box.delete(key);
+            synced++;
+          }
+        } catch (e) {
+          _log.warning('Failed to sync progress for $key: $e');
+        }
+      }
+
+      _log.info('Successfully synced $synced offline progress entries');
+    } catch (e) {
+      _log.warning('Failed to sync offline progress: $e');
+    }
+  }
+
   Future<void> progress(
-      String whitelabel, String id, int progress, String contentType) async {
+      String whitelabel, String id, int progress, String contentType,
+      {bool isOffline = false}) async {
     if (id.isEmpty) return;
+
+    // Store offline progress locally instead of sending to API
+    if (isOffline) {
+      await _storeOfflineProgress(id, progress, contentType);
+      return;
+    }
+
     _pendingProgress[id] = {
       'progress': progress,
       'contentType': contentType,
@@ -865,8 +952,16 @@ class FPApiRequests {
   }
 
   Future<void> iprogress(
-      String whitelabel, String id, int progress, String contentType) async {
+      String whitelabel, String id, int progress, String contentType,
+      {bool isOffline = false}) async {
     if (id.isEmpty) return;
+
+    // Store offline progress locally instead of sending to API
+    if (isOffline) {
+      await _storeOfflineProgress(id, progress, contentType);
+      return;
+    }
+
     await postData('v3/content/progress', whitelabel, {
       'id': id,
       'contentType': contentType,

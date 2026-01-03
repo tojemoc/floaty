@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:floaty/features/authentication/services/oauth2_service.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/main.dart';
@@ -122,6 +123,15 @@ class SettingsListScreen extends StatelessWidget {
             title: const Text('Player'),
             onTap: () {
               context.go('/settings/player');
+            },
+          ),
+          ListTile(
+            selected:
+                GoRouterState.of(context).uri.path == '/settings/downloads',
+            leading: const Icon(Icons.download),
+            title: const Text('Downloads'),
+            onTap: () {
+              context.go('/settings/downloads');
             },
           ),
           ListTile(
@@ -1155,8 +1165,8 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
                   settingkey: 'discord_rpc',
                   defaultvalue: true,
                 ),
-              if (Platform.isAndroid || Platform.isIOS)
-                const PlayerTypeSelector(),
+              // if (Platform.isAndroid || Platform.isIOS)
+              //   const PlayerTypeSelector(),
             ],
           ),
         ),
@@ -1685,6 +1695,277 @@ class AccountsSettingsScreenState extends State<AccountsSettingsScreen> {
   }
 }
 
+class DownloadsSettingsScreen extends StatefulWidget {
+  const DownloadsSettingsScreen({super.key});
+
+  @override
+  State<DownloadsSettingsScreen> createState() =>
+      _DownloadsSettingsScreenState();
+}
+
+class _DownloadsSettingsScreenState extends State<DownloadsSettingsScreen> {
+  String? downloadPath;
+  int downloadThreads = 3;
+  String filenameTemplate = '%title% (%quality%)';
+  bool creatorFolder = true;
+  bool channelFolder = false;
+  bool overwriteDownload = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    var path = await settings.getDynamic('download_path');
+    // Use downloads directory as default if no custom path set
+    if (path == null) {
+      try {
+        final downloadsDir = await getDownloadsDirectory();
+        path = downloadsDir?.path;
+      } catch (e) {
+        // Fallback to app directory if downloads directory not available
+        final appDir = await getApplicationDocumentsDirectory();
+        path = appDir.path;
+      }
+    }
+    final threads =
+        await settings.getDynamic('download_threads', defaultValue: 3);
+    final template = await settings.getDynamic('download_filename',
+        defaultValue: '%title% (%quality%)');
+    final creator =
+        await settings.getBool('creator_folder', defaultValue: true);
+    final channel = await settings.getBool('channel_folder');
+    final overwrite = await settings.getBool('overwrite_download');
+
+    if (mounted) {
+      setState(() {
+        downloadPath = path;
+        downloadThreads = threads;
+        filenameTemplate = template;
+        creatorFolder = creator;
+        channelFolder = channel;
+        overwriteDownload = overwrite;
+      });
+    }
+  }
+
+  Future<void> _pickDownloadPath() async {
+    final result = await FilePicker.platform.getDirectoryPath();
+    if (result != null) {
+      await settings.setDynamic('download_path', result);
+      setState(() {
+        downloadPath = result;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: MediaQuery.of(context).size.width < 600
+          ? AppBar(
+              elevation: 0,
+              toolbarHeight: 40,
+              backgroundColor: colorScheme.surfaceContainer,
+              surfaceTintColor: colorScheme.surfaceContainer,
+              title: const Text('Downloads'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.pop(),
+              ),
+            )
+          : null,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: ListView(
+            children: [
+              ListTile(
+                title: const Text('Download Location'),
+                subtitle: Text(
+                  downloadPath ?? 'Default (App Directory)',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.folder_open),
+                  onPressed: _pickDownloadPath,
+                  tooltip: 'Choose folder',
+                ),
+              ),
+              ListTile(
+                title: const Text('Concurrent Downloads'),
+                subtitle: Text('$downloadThreads downloads at once'),
+                trailing: SizedBox(
+                  width: 150,
+                  child: Slider(
+                    value: downloadThreads.toDouble(),
+                    min: 1,
+                    max: 8,
+                    divisions: 7,
+                    label: downloadThreads.toString(),
+                    onChanged: (value) async {
+                      final newValue = value.toInt();
+                      await settings.setDynamic('download_threads', newValue);
+                      setState(() {
+                        downloadThreads = newValue;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'File Organization',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                title: const Text('Filename Template'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      filenameTemplate,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Available: %creator%, %channel%, %title%, %quality%',
+                      style: TextStyle(
+                        color:
+                            colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () async {
+                    final result = await showDialog<String>(
+                      context: context,
+                      builder: (context) => _FilenameTemplateDialog(
+                        initialValue: filenameTemplate,
+                      ),
+                    );
+                    if (result != null) {
+                      await settings.setDynamic('download_filename', result);
+                      setState(() {
+                        filenameTemplate = result;
+                      });
+                    }
+                  },
+                ),
+              ),
+              const ToggleSetting(
+                title: 'Organize by Creator',
+                settingkey: 'creator_folder',
+                defaultvalue: true,
+              ),
+              const ToggleSetting(
+                title: 'Organize by Channel',
+                settingkey: 'channel_folder',
+              ),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Advanced',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const ToggleSetting(
+                title: 'Overwrite Existing Files',
+                settingkey: 'overwrite_download',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilenameTemplateDialog extends StatefulWidget {
+  final String initialValue;
+
+  const _FilenameTemplateDialog({required this.initialValue});
+
+  @override
+  State<_FilenameTemplateDialog> createState() =>
+      _FilenameTemplateDialogState();
+}
+
+class _FilenameTemplateDialogState extends State<_FilenameTemplateDialog> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Filename Template'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            decoration: const InputDecoration(
+              labelText: 'Template',
+              hintText: '%title% (%quality%)',
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Available variables:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          const Text('%creator% - Creator name',
+              style: TextStyle(fontSize: 12)),
+          const Text('%channel% - Channel name',
+              style: TextStyle(fontSize: 12)),
+          const Text('%title% - Video title', style: TextStyle(fontSize: 12)),
+          const Text('%quality% - Quality (e.g., 1080p)',
+              style: TextStyle(fontSize: 12)),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class ToggleSetting extends StatefulWidget {
   const ToggleSetting({
     super.key,
@@ -1723,94 +2004,94 @@ class _ToggleSettingState extends State<ToggleSetting> {
   }
 }
 
-class PlayerTypeSelector extends StatefulWidget {
-  const PlayerTypeSelector({super.key});
-  @override
-  State<PlayerTypeSelector> createState() => _PlayerTypeSelectorState();
-}
+// class PlayerTypeSelector extends StatefulWidget {
+//   const PlayerTypeSelector({super.key});
+//   @override
+//   State<PlayerTypeSelector> createState() => _PlayerTypeSelectorState();
+// }
 
-class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
-  PlayerType? selectedVODPlayerType;
-  PlayerType? selectedLivePlayerType;
-  @override
-  void initState() {
-    super.initState();
-    _loadPlayerType();
-  }
+// class _PlayerTypeSelectorState extends State<PlayerTypeSelector> {
+//   PlayerType? selectedVODPlayerType;
+//   PlayerType? selectedLivePlayerType;
+//   @override
+//   void initState() {
+//     super.initState();
+//     _loadPlayerType();
+//   }
 
-  Future<void> _loadPlayerType() async {
-    final playerVODTypeString = await Settings().getKey('player_backend');
-    PlayerType playerVODType;
-    if (playerVODTypeString.isEmpty) {
-      // Use default based on platform
-      playerVODType = Platform.isAndroid || Platform.isIOS
-          ? PlayerType.betterPlayer
-          : PlayerType.mediaKit;
-    } else {
-      // Convert string to enum
-      playerVODType = PlayerType.values.firstWhere(
-        (e) => e.toString() == 'PlayerType.$playerVODTypeString',
-        orElse: () => Platform.isAndroid || Platform.isIOS
-            ? PlayerType.betterPlayer
-            : PlayerType.mediaKit,
-      );
-    }
-    setState(() {
-      selectedVODPlayerType = playerVODType;
-    });
-  }
+//   Future<void> _loadPlayerType() async {
+//     final playerVODTypeString = await Settings().getKey('player_backend');
+//     PlayerType playerVODType;
+//     if (playerVODTypeString.isEmpty) {
+//       // Use default based on platform
+//       playerVODType = Platform.isAndroid || Platform.isIOS
+//           ? PlayerType.betterPlayer
+//           : PlayerType.mediaKit;
+//     } else {
+//       // Convert string to enum
+//       playerVODType = PlayerType.values.firstWhere(
+//         (e) => e.toString() == 'PlayerType.$playerVODTypeString',
+//         orElse: () => Platform.isAndroid || Platform.isIOS
+//             ? PlayerType.betterPlayer
+//             : PlayerType.mediaKit,
+//       );
+//     }
+//     setState(() {
+//       selectedVODPlayerType = playerVODType;
+//     });
+//   }
 
-  Future<void> _setPlayerType(PlayerType? type) async {
-    if (type == null) return;
-    final enumString = type.toString().split('.').last;
-    await Settings().setKey('player_backend', enumString);
-    setState(() {
-      selectedVODPlayerType = type;
-    });
-    await MediaPlayerService().loadPlayer(type);
-  }
+//   Future<void> _setPlayerType(PlayerType? type) async {
+//     if (type == null) return;
+//     final enumString = type.toString().split('.').last;
+//     await Settings().setKey('player_backend', enumString);
+//     setState(() {
+//       selectedVODPlayerType = type;
+//     });
+//     await MediaPlayerService().loadPlayer(type);
+//   }
 
-  String _getPlayerTypeName(PlayerType type) {
-    switch (type) {
-      case PlayerType.mediaKit:
-        return 'Media Kit';
-      case PlayerType.betterPlayer:
-        return 'Better Player';
-    }
-  }
+//   String _getPlayerTypeName(PlayerType type) {
+//     switch (type) {
+//       case PlayerType.mediaKit:
+//         return 'Media Kit';
+//       case PlayerType.betterPlayer:
+//         return 'Better Player';
+//     }
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (selectedVODPlayerType == null) {
-      return const SizedBox.shrink();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        RadioGroup(
-          groupValue: selectedVODPlayerType,
-          onChanged: _setPlayerType,
-          child: Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: Text(
-                  'Player Backend',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-              RadioListTile<PlayerType>(
-                title: Text(_getPlayerTypeName(PlayerType.mediaKit)),
-                value: PlayerType.mediaKit,
-              ),
-              RadioListTile<PlayerType>(
-                title: Text(_getPlayerTypeName(PlayerType.betterPlayer)),
-                value: PlayerType.betterPlayer,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     if (selectedVODPlayerType == null) {
+//       return const SizedBox.shrink();
+//     }
+//     return Column(
+//       crossAxisAlignment: CrossAxisAlignment.start,
+//       children: [
+//         RadioGroup(
+//           groupValue: selectedVODPlayerType,
+//           onChanged: _setPlayerType,
+//           child: Column(
+//             children: [
+//               const Padding(
+//                 padding: EdgeInsets.all(8),
+//                 child: Text(
+//                   'Player Backend',
+//                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+//                 ),
+//               ),
+//               RadioListTile<PlayerType>(
+//                 title: Text(_getPlayerTypeName(PlayerType.mediaKit)),
+//                 value: PlayerType.mediaKit,
+//               ),
+//               RadioListTile<PlayerType>(
+//                 title: Text(_getPlayerTypeName(PlayerType.betterPlayer)),
+//                 value: PlayerType.betterPlayer,
+//               ),
+//             ],
+//           ),
+//         ),
+//       ],
+//     );
+//   }
+// }

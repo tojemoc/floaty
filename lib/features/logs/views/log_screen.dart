@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:floaty/features/logs/repositories/log_service.dart';
 
+enum LogType { app, download }
+
 class LogScreen extends StatefulWidget {
   const LogScreen({super.key});
 
@@ -11,6 +13,7 @@ class LogScreen extends StatefulWidget {
 class _LogScreenState extends State<LogScreen> {
   List<String> logs = [];
   bool loading = true;
+  LogType selectedLogType = LogType.app;
 
   @override
   void initState() {
@@ -20,13 +23,30 @@ class _LogScreenState extends State<LogScreen> {
 
   Future<void> _loadLogs() async {
     setState(() => loading = true);
-    logs = await LogService.getLogs();
+    if (selectedLogType == LogType.app) {
+      logs = await LogService.getLogs();
+    } else {
+      logs = await LogService.getDownloadLogs();
+    }
     setState(() => loading = false);
   }
 
   Future<void> _clearLogs() async {
-    await LogService.clearLogs();
+    if (selectedLogType == LogType.app) {
+      await LogService.clearLogs();
+    } else {
+      await LogService.clearDownloadLogs();
+    }
     await _loadLogs();
+  }
+
+  void _switchLogType(LogType? type) {
+    if (type != null && type != selectedLogType) {
+      setState(() {
+        selectedLogType = type;
+      });
+      _loadLogs();
+    }
   }
 
   @override
@@ -47,19 +67,58 @@ class _LogScreenState extends State<LogScreen> {
           ),
         ],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : logs.isEmpty
-              ? const Center(child: Text('No logs found.'))
-              : ListView.builder(
-                  itemCount: logs.length,
-                  itemBuilder: (context, i) => Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: SelectableText(logs[i],
-                        style: const TextStyle(fontSize: 14)),
-                  ),
+      body: Column(
+        children: [
+          // Log type switcher
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SegmentedButton<LogType>(
+              segments: const [
+                ButtonSegment<LogType>(
+                  value: LogType.app,
+                  label: Text('App Logs'),
+                  icon: Icon(Icons.bug_report),
                 ),
+                ButtonSegment<LogType>(
+                  value: LogType.download,
+                  label: Text('Download Logs'),
+                  icon: Icon(Icons.download),
+                ),
+              ],
+              selected: {selectedLogType},
+              onSelectionChanged: (Set<LogType> selection) {
+                _switchLogType(selection.first);
+              },
+            ),
+          ),
+          // Logs display
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : logs.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No ${selectedLogType == LogType.app ? 'app' : 'download'} logs found.',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: logs.length,
+                        itemBuilder: (context, i) => Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          child: SelectableText(
+                            logs[i],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }

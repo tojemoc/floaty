@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io';
+import 'package:logging/logging.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:crypto/crypto.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -16,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:floaty/settings.dart';
 import 'package:floaty/whitelabels.dart';
+import 'package:window_manager/window_manager.dart';
 
 /// OpenID Connect Discovery Configuration
 class OpenIDConfig {
@@ -59,6 +61,7 @@ class OpenIDConfig {
 }
 
 class OAuth2Service {
+  final Logger _log = Logger('OAuth2Service');
   static final OAuth2Service instance = OAuth2Service();
 
   static const FlutterAppAuth _appAuth = FlutterAppAuth();
@@ -319,7 +322,7 @@ class OAuth2Service {
       final config = await getOpenIDConfig(whiteLabel: whiteLabel);
       final clientId = await getClientId();
 
-      print(config.toString());
+      _log.fine('OpenID config: ${config.toString()}');
 
       // Use overrides if flag enabled, otherwise use dynamic config or Floatplane defaults
       final authEndpoint = _useOAuthOverrides
@@ -392,14 +395,148 @@ class OAuth2Service {
             request.response.write('''
               <!DOCTYPE html>
               <html>
-                <head><title>Floaty Authentication</title></head>
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Floaty Authentication</title>
+                  <style>
+                    * {
+                      margin: 0;
+                      padding: 0;
+                      box-sizing: border-box;
+                    }
+                    body {
+                      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                      background: #121212;
+                      min-height: 100vh;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      animation: fadeIn 0.3s ease-in;
+                    }
+                    @keyframes fadeIn {
+                      from { opacity: 0; }
+                      to { opacity: 1; }
+                    }
+                    .container {
+                      background: #1E1E1E;
+                      border-radius: 12px;
+                      padding: 48px 40px;
+                      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                      text-align: center;
+                      max-width: 420px;
+                      animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                    }
+                    @keyframes slideUp {
+                      from {
+                        transform: translateY(20px);
+                        opacity: 0;
+                      }
+                      to {
+                        transform: translateY(0);
+                        opacity: 1;
+                      }
+                    }
+                    .icon {
+                      width: 64px;
+                      height: 64px;
+                      margin: 0 auto 24px;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      background: ${result.isSuccess ? '#4CAF50' : '#F44336'};
+                      animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+                    }
+                    @keyframes scaleIn {
+                      from {
+                        transform: scale(0);
+                      }
+                      to {
+                        transform: scale(1);
+                      }
+                    }
+                    .icon svg {
+                      width: 32px;
+                      height: 32px;
+                      stroke: white;
+                      stroke-width: 3;
+                      fill: none;
+                      stroke-linecap: round;
+                      stroke-linejoin: round;
+                    }
+                    h1 {
+                      color: #FFFFFF;
+                      font-size: 24px;
+                      font-weight: 500;
+                      margin-bottom: 12px;
+                      letter-spacing: 0.25px;
+                    }
+                    p {
+                      color: #B3B3B3;
+                      font-size: 14px;
+                      line-height: 1.5;
+                      margin-bottom: 32px;
+                      letter-spacing: 0.25px;
+                    }
+                    .button {
+                      background-color: ${result.isSuccess ? '#4CAF50' : '#F44336'};
+                      color: #FFFFFF;
+                      border: none;
+                      padding: 12px 32px;
+                      border-radius: 4px;
+                      font-size: 14px;
+                      font-weight: 500;
+                      text-transform: uppercase;
+                      letter-spacing: 1.25px;
+                      cursor: pointer;
+                      transition: background-color 0.2s ease, box-shadow 0.2s ease;
+                      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+                    }
+                    .button:hover {
+                      background-color: ${result.isSuccess ? '#45A049' : '#E53935'};
+                      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+                    }
+                    .button:active {
+                      background-color: ${result.isSuccess ? '#388E3C' : '#D32F2F'};
+                      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+                    }
+                    .countdown {
+                      color: #757575;
+                      font-size: 12px;
+                      margin-top: 20px;
+                      letter-spacing: 0.4px;
+                    }
+                    .countdown-timer {
+                      color: #9E9E9E;
+                      font-weight: 500;
+                    }
+                  </style>
+                </head>
                 <body>
-                  <h1>Authentication ${result.isSuccess ? 'Successful' : 'Failed'}</h1>
-                  <p>You can now close this window and return to Floaty.</p>
-                  <script>window.close();</script>
+                  <div class="container">
+                    <div class="icon">
+                      ${result.isSuccess ? '''
+                        <svg viewBox="0 0 24 24">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      ''' : '''
+                        <svg viewBox="0 0 24 24">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      '''}
+                    </div>
+                    <h1>Authentication ${result.isSuccess ? 'Successful' : 'Failed'}</h1>
+                    <p>
+                      ${result.isSuccess ? 'You have successfully signed in to Floaty. Return to the app to continue.' : 'Authentication could not be completed. Return to the app and try again.'}
+                    </p>
+                    <div class="countdown">You can close this tab now</div>
+                  </div>
                 </body>
               </html>
             ''');
+            await windowManager.focus();
             await request.response.close();
             break;
           }
@@ -653,7 +790,7 @@ class OAuth2Service {
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('Logout error: $e');
+        _log.severe('Logout error: $e');
       }
       return false;
     }
@@ -806,11 +943,22 @@ class OAuth2Service {
     await settings.removeKey('${whitelabelPrefix}_auth_method');
   }
 
+  /// Check if tokens are stored (regardless of whether they're expired)
+  Future<bool> hasStoredTokens({String? whitelabel}) async {
+    final whitelabelPrefix = whitelabel ?? 'default';
+    final accessToken =
+        await settings.getKey('${whitelabelPrefix}_oauth2_access_token');
+    final refreshToken =
+        await settings.getKey('${whitelabelPrefix}_oauth2_refresh_token');
+    return accessToken.isNotEmpty || refreshToken.isNotEmpty;
+  }
+
   /// Get the auth method for a whitelabel (oauth2, cookie, or null if not set)
   Future<String?> getAuthMethod({String? whitelabel}) async {
     final whitelabelPrefix = whitelabel ?? 'default';
     final key = '${whitelabelPrefix}_auth_method';
     final method = await settings.getKey(key);
+    _log.fine('Auth method for $whitelabelPrefix: $method');
     return method.isEmpty ? null : method;
   }
 
@@ -900,7 +1048,7 @@ class OAuth2Service {
       return null;
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to fetch user info: $e');
+        _log.warning('Failed to fetch user info: $e');
       }
       return null;
     }
@@ -948,7 +1096,6 @@ class OAuth2Result {
   }
 
   factory OAuth2Result.cancelled() {
-    print('OAuth2 Cancelled');
     return OAuth2Result._(
       isSuccess: false,
       isCancelled: true,
@@ -956,7 +1103,6 @@ class OAuth2Result {
   }
 
   factory OAuth2Result.error(String error) {
-    print('OAuth2 Error: $error');
     return OAuth2Result._(
       isSuccess: false,
       isCancelled: false,

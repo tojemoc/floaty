@@ -1,5 +1,7 @@
 import 'package:logger/logger.dart';
 import 'package:hive_ce/hive.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 class LogService {
   static final Logger _logger = Logger();
@@ -55,5 +57,56 @@ class LogService {
     final box = await Hive.openBox(_boxName);
     _logs.clear();
     await box.delete(_logKey);
+  }
+
+  /// Add a log directly (used by logging framework listener)
+  static Future<void> addLog(String log) async {
+    final box = await Hive.openBox(_boxName);
+    _logs.add(
+        '${DateTime.now().toIso8601String().split('T').join(' ').substring(0, 19)} $log');
+    // Keep only the latest 1000 logs
+    if (_logs.length > 1000) {
+      _logs = _logs.sublist(_logs.length - 1000);
+    }
+    await box.put(_logKey, _logs);
+  }
+
+  /// Get download logs from file
+  static Future<List<String>> getDownloadLogs() async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final logFile = File('${directory.path}/download.log');
+
+      if (!await logFile.exists()) {
+        return [];
+      }
+
+      final contents = await logFile.readAsString();
+      final lines =
+          contents.split('\n').where((line) => line.isNotEmpty).toList();
+
+      // Return the last 1000 lines
+      if (lines.length > 1000) {
+        return lines.sublist(lines.length - 1000);
+      }
+
+      return lines;
+    } catch (e) {
+      return ['Error reading download logs: $e'];
+    }
+  }
+
+  /// Clear download logs
+  static Future<void> clearDownloadLogs() async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final logFile = File('${directory.path}/download.log');
+
+      if (await logFile.exists()) {
+        await logFile.delete();
+      }
+    } catch (e) {
+      _logger.e('Error clearing download logs: $e');
+    }
   }
 }

@@ -52,7 +52,6 @@ class ProfileScreenStateWrapperState
   bool isActivityLoading = true;
   List<DateModel>? parseddates;
   FloatyException? _error;
-  FloatyException? _activityError;
 
   dynamic user;
   dynamic activity;
@@ -131,7 +130,6 @@ class ProfileScreenStateWrapperState
 
   Future<void> parseActivityData() async {
     setState(() {
-      _activityError = null;
       isActivityLoading = true;
     });
 
@@ -177,21 +175,15 @@ class ProfileScreenStateWrapperState
           isActivityLoading = false;
         });
       }
-    } on SocketException catch (e) {
+    } on SocketException {
       if (mounted) {
         setState(() {
-          _activityError = NoInternetException(originalError: e);
           isActivityLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _activityError = UnexpectedException(
-            message: 'Failed to load activity',
-            details: e.toString(),
-            originalError: e,
-          );
           isActivityLoading = false;
         });
       }

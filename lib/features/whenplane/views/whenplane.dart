@@ -919,7 +919,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
                     children: [
                       TextSpan(
                         text:
-                            ' ${whenPlaneIntegration.timeString(pjsonData['floatplane']?['thumbnailAge'], long: true, showSeconds: false)}ago',
+                            ' ${whenPlaneIntegration.timeString(pjsonData['floatplane']?['thumbnailAge'] ?? 0, long: true, showSeconds: false)}ago',
                       ),
                     ],
                   ),

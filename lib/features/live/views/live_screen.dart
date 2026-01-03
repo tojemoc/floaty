@@ -95,10 +95,11 @@ class _LiveVideoWidgetState extends ConsumerState<LiveVideoWidget> {
     if (mounted) {
       mediaService = ref.read(mediaPlayerServiceProvider.notifier);
     }
-    final delivery = await fpApiRequests.getDelivery(
+    final deliveryResponse = await fpApiRequests.getDelivery(
         (await whitelabels.getSelectedWhitelabel()).friendlyName,
         'live',
         widget.creatorInfo.liveStream?.id ?? '');
+    final delivery = deliveryResponse['body'] as String;
     final deliveryData = jsonDecode(delivery);
     masterUrl =
         '${deliveryData['groups'][0]['origins'][0]['url']}${deliveryData['groups'][0]['variants'][0]['url']}';

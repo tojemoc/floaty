@@ -80,6 +80,7 @@ class _DesktopPipOverlayState extends ConsumerState<DesktopPipOverlay> {
         mediaService.currentAttachmentId ?? '',
         mediaService.currentPosition.inSeconds,
         mediaService.selectedMediaName ?? '',
+        isOffline: mediaService.isOffline,
       );
     }
 
@@ -186,13 +187,9 @@ class _PiPOverlayPageState extends State<PiPOverlayPage> {
   @override
   void initState() {
     super.initState();
-    print('Subscribing to PiP exit stream');
     _sub = widget.mediaService.pipExitStream.listen((_) {
-      print('Received PiP exit event');
       if (mounted) {
-        print('Exiting PiP overlay route');
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          print('Popping PiP overlay route');
           if (mounted) Navigator.of(context, rootNavigator: true).maybePop();
         });
       }

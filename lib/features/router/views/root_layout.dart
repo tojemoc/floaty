@@ -3,6 +3,7 @@ import 'package:floaty/features/router/components/sidebar_channel_item.dart';
 import 'package:floaty/features/router/components/sidebar_item.dart';
 import 'package:floaty/features/router/components/sidebar_size_control.dart';
 import 'package:floaty/features/router/components/sidebar_text.dart';
+import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/shared/components/switcher.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class RootLayoutState extends ConsumerState<RootLayout>
   late bool isSmallScreen;
   bool? _lastSidebarCollapsed;
   bool _textGuardInitialized = false;
+  bool updateReady = updatercontroller.updateReady;
   @override
   void initState() {
     super.initState();
@@ -78,10 +80,20 @@ class RootLayoutState extends ConsumerState<RootLayout>
     final rootNotifier = ref.read(rootProvider.notifier);
     final screenWidth = MediaQuery.of(context).size.width;
     isSmallScreen = screenWidth < 600;
+    bool subed = false;
 
     final isSidebarCollapsed = isSmallScreen ? false : rootState.isCollapsed;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!subed) {
+        subed = true;
+        updatercontroller.updateStream.stream.listen((available) {
+          print('Update available stream event: $available');
+          setState(() {
+            updateReady = available;
+          });
+        });
+      }
       if (!mounted) return;
       // Only update `showText` when the collapsed state actually changes
       // to avoid causing a rebuild loop.
@@ -134,6 +146,14 @@ class RootLayoutState extends ConsumerState<RootLayout>
                     icon: Icons.history,
                     title: 'Watch history',
                     route: '/history',
+                    isSidebarCollapsed: isSidebarCollapsed,
+                    isSmallScreen: isSmallScreen,
+                    showText: rootState.showText,
+                  ),
+                  SidebarItem(
+                    icon: Icons.download,
+                    title: 'Downloads',
+                    route: '/offline',
                     isSidebarCollapsed: isSidebarCollapsed,
                     isSmallScreen: isSmallScreen,
                     showText: rootState.showText,
@@ -210,7 +230,7 @@ class RootLayoutState extends ConsumerState<RootLayout>
           Column(
             children: [
               SidebarItem(
-                icon: Icons.settings,
+                icon: updateReady ? Icons.update : Icons.settings,
                 title: 'Settings',
                 route: '/settings',
                 isSidebarCollapsed: isSidebarCollapsed,
@@ -292,27 +312,20 @@ class RootLayoutState extends ConsumerState<RootLayout>
           children: [
             if (!isSmallScreen) sidebar,
             Expanded(
-              child: Stack(
-                children: [
-                  // Plain shell content — `widget.child` is provided by the
-                  // router and is displayed inside the persistent RootLayout.
-                  widget.child,
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final mediaState = ref.watch(mediaPlayerServiceProvider);
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final mediaState = ref.watch(mediaPlayerServiceProvider);
 
-                      if (mediaState == MediaPlayerState.mini) {
-                        return const Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: MiniPlayerOverlay(),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ],
+                  if (mediaState == MediaPlayerState.mini) {
+                    return Column(
+                      children: [
+                        Expanded(child: widget.child),
+                        const MiniPlayerOverlay(),
+                      ],
+                    );
+                  }
+                  return widget.child;
+                },
               ),
             ),
           ],

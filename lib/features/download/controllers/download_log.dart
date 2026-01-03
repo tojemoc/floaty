@@ -1,0 +1,133 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:logging/logging.dart';
+import 'package:path_provider/path_provider.dart';
+
+class DownloadLog {
+  final Logger _log = Logger('DownloadLog');
+  IOSink? _writer;
+  File? _logFile;
+  bool _isWriting = false;
+  bool _isClosed = false;
+  final List<String> _writeQueue = [];
+
+  /// Open/Create file
+  Future<void> open() async {
+    try {
+      Directory? directory = await getApplicationSupportDirectory();
+
+      _logFile = File('${directory.path}/download.log');
+
+      if (!await _logFile!.exists()) {
+        await _logFile!.create();
+      }
+
+      _writer = _logFile!.openWrite(mode: FileMode.append);
+    } catch (e) {
+      _log.severe('Error opening download log: $e');
+    }
+  }
+
+  /// Close log
+  Future<void> close() async {
+    if (_isClosed) return; // Already closed
+    _isClosed = true;
+
+    try {
+      // Wait for any pending writes to complete
+      while (_isWriting || _writeQueue.isNotEmpty) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+
+      // Now close the writer
+      await _writer?.flush();
+      await _writer?.close();
+      _writer = null;
+    } catch (e) {
+      _log.severe('Error closing download log: $e');
+    }
+  }
+
+  String _time() {
+    final format = DateFormat('yyyy.MM.dd HH:mm:ss');
+    return format.format(DateTime.now());
+  }
+
+  /// Write error to log
+  void error(String info, [DownloadInfo? download]) {
+    if (_writer == null || _isClosed) return;
+
+    String data;
+    if (download != null) {
+      data =
+          'E:${_time()} (TrackID: ${download.trackId}, ID: ${download.id}): $info';
+    } else {
+      data = 'E:${_time()}: $info';
+    }
+
+    _queueWrite(data);
+    _log.severe(data);
+  }
+
+  /// Write warning to log
+  void warn(String info, [DownloadInfo? download]) {
+    if (_writer == null || _isClosed) return;
+
+    String data;
+    if (download != null) {
+      data =
+          'W:${_time()} (TrackID: ${download.trackId}, ID: ${download.id}): $info';
+    } else {
+      data = 'W:${_time()}: $info';
+    }
+
+    _queueWrite(data);
+    _log.warning(data);
+  }
+
+  /// Write info to log
+  void log(String info) {
+    if (_writer == null || _isClosed) return;
+
+    final data = 'I:${_time()}: $info';
+
+    _queueWrite(data);
+    _log.info(data);
+  }
+
+  /// Queue a write operation to prevent concurrent access
+  void _queueWrite(String data) {
+    _writeQueue.add(data);
+    _processQueue();
+  }
+
+  /// Process the write queue sequentially
+  Future<void> _processQueue() async {
+    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed) {
+      return;
+    }
+
+    _isWriting = true;
+
+    while (_writeQueue.isNotEmpty && !_isClosed) {
+      final data = _writeQueue.removeAt(0);
+      try {
+        _writer!.writeln(data);
+        await _writer!.flush();
+      } catch (e) {
+        _log.severe('Error writing into log: $e');
+      }
+    }
+
+    _isWriting = false;
+  }
+}
+
+/// Minimal download info for logging
+class DownloadInfo {
+  final String trackId;
+  final int id;
+
+  DownloadInfo({required this.trackId, required this.id});
+}

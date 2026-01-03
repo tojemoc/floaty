@@ -4,7 +4,6 @@ import 'package:floaty/features/api/models/definitions.dart';
 import 'dart:async';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/authentication/services/oauth2_service.dart';
-import 'package:floaty/features/player/components/custom_player/pip_overlay.dart';
 import 'package:floaty/features/player/models/seekbar_chapter.dart';
 import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
 import 'package:floaty/whitelabels.dart';
@@ -23,11 +22,10 @@ import 'windows_media_controls.dart';
 import '../models/video_quality.dart';
 import 'package:floaty/features/player/models/subtitle_style.dart';
 import 'package:floaty/settings.dart';
-import 'package:better_player_plus/better_player_plus.dart';
 
 enum PlayerType {
   mediaKit,
-  betterPlayer,
+  // betterPlayer,
 }
 
 enum MediaType {
@@ -49,15 +47,12 @@ final mediaPlayerServiceProvider =
 
 class MediaPlayerService extends Notifier<MediaPlayerState> {
   PackageInfo? packageInfo;
-  String userAgent = 'FloatyClient/error, CFNetwork';
+  String userAgent = 'FloatyClient/error';
   static final MediaPlayerService _instance = MediaPlayerService._internal();
   PlayerType? selectedPlayerType;
   PlayerType? loadedPlayerType;
   static Player? mediaKitPlayer;
-  BetterPlayerController? betterPlayerController;
-  GlobalKey<State<StatefulWidget>> betterPlayerGlobalKey = GlobalKey();
   Player get mediaKit => mediaKitPlayer!;
-  BetterPlayerController get betterPlayer => betterPlayerController!;
   FloatyAudioHandler? audioHandler;
   WindowsMediaControls? windowsControls;
   final Logger _log = Logger('MediaPlayerService');
@@ -67,7 +62,6 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   Duration _duration = Duration.zero;
   Duration _buffer = Duration.zero;
   bool _buffering = false;
-  bool _completed = false;
   double _playbackSpeed = 1.0;
   double _volume = 1.0;
   String? _currentMediaUrl;
@@ -80,6 +74,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   String? _currentPostId;
   bool _currentDiscoverable = false;
   bool _live = false;
+  bool _isOffline = false;
+  ContentPostV3Response? _offlinePost;
+  String? _offlineAttachmentId;
+  String? _offlineFilePath;
   dynamic _currentAttachment;
   VideoQuality? _currentQuality;
   List<VideoQuality> _availableQualities = [];
@@ -159,6 +157,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   ImageModel? get currentTimelineSprite => _currentTimelineSprite;
   String? get currentPostId => _currentPostId;
   bool get currentLive => _live;
+  bool get isOffline => _isOffline;
+  ContentPostV3Response? get offlinePost => _offlinePost;
+  String? get offlineAttachmentId => _offlineAttachmentId;
+  String? get offlineFilePath => _offlineFilePath;
   String? get currentAttachmentId => _currentAttachment?.id;
   dynamic get currentAttachment => _currentAttachment;
   String? get selectedMediaName => _currentMediaType?.name;
@@ -199,26 +201,27 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
-    // Load player type from settings (stored as string)
-    final playerTypeString = await Settings().getKey('player_backend');
-    if (playerTypeString.isEmpty) {
-      selectedPlayerType = Platform.isAndroid || Platform.isIOS
-          ? PlayerType.betterPlayer
-          : PlayerType.mediaKit;
-    } else {
-      selectedPlayerType = PlayerType.values.firstWhere(
-        (e) => e.toString() == 'PlayerType.$playerTypeString',
-        orElse: () => Platform.isAndroid || Platform.isIOS
-            ? PlayerType.betterPlayer
-            : PlayerType.mediaKit,
-      );
-    }
-    print('Selected player type: $selectedPlayerType');
-    await loadPlayer(selectedPlayerType ??
-        (Platform.isAndroid || Platform.isIOS
-            ? PlayerType.betterPlayer
-            : PlayerType.mediaKit));
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor';
+    // // Load player type from settings (stored as string)
+    // final playerTypeString = await Settings().getKey('player_backend');
+    // if (playerTypeString.isEmpty) {
+    //   selectedPlayerType = Platform.isAndroid || Platform.isIOS
+    //       ? PlayerType.betterPlayer
+    //       : PlayerType.mediaKit;
+    // } else {
+    //   selectedPlayerType = PlayerType.values.firstWhere(
+    //     (e) => e.toString() == 'PlayerType.$playerTypeString',
+    //     orElse: () => Platform.isAndroid || Platform.isIOS
+    //         ? PlayerType.betterPlayer
+    //         : PlayerType.mediaKit,
+    //   );
+    // }
+    _log.info('Selected player type: $selectedPlayerType');
+    // await loadPlayer(selectedPlayerType ??
+    //     (Platform.isAndroid || Platform.isIOS
+    //         ? PlayerType.betterPlayer
+    //         : PlayerType.mediaKit));
+    await loadPlayer(PlayerType.mediaKit);
     await _startSession();
     _subtitlesEnabled =
         await settings.getBool('subtitles_enabled', defaultValue: false);
@@ -246,7 +249,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
   }
 
   Future<void> loadPlayer(PlayerType playerType) async {
-    print('Loading player: $playerType');
+    _log.info('Loading player: $playerType');
     if (playerType == loadedPlayerType) return;
     if (loadedPlayerType != null) {
       switch (loadedPlayerType) {
@@ -254,10 +257,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           await mediaKitPlayer!.dispose();
           mediaKitPlayer = null;
           break;
-        case PlayerType.betterPlayer:
-          betterPlayerController?.dispose(forceDispose: true);
-          betterPlayerController = null;
-          break;
+        // case PlayerType.betterPlayer:
+        //   _betterPlayerController?.dispose(forceDispose: true);
+        //   _betterPlayerController = null;
+        //   break;
         default:
           break;
       }
@@ -273,14 +276,12 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _log.severe('Failed to load MediaKit player', e);
         }
         break;
-      case PlayerType.betterPlayer:
-        _log.info('No initialization required for BetterPlayer.');
-        loadedPlayerType = playerType;
-        break;
+      // case PlayerType.betterPlayer:
+      //   _log.info('No initialization required for BetterPlayer.');
+      //   loadedPlayerType = playerType;
+      //   break;
     }
-    if (playerType != PlayerType.betterPlayer) {
-      _setupPlayerListeners();
-    }
+    _setupPlayerListeners();
     _log.info('MediaPlayerService initialization completed successfully');
   }
 
@@ -314,7 +315,6 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _bufferingController.add(buffering);
         });
         mediaKit.stream.completed.listen((completed) {
-          _completed = completed;
           _completedController.add(completed);
         });
         mediaKit.stream.rate.listen((rate) {
@@ -332,46 +332,46 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
                 break;
               case PipState.pipStateFailed:
                 _pipExitController.add(true);
-                print('PiP failed: $error');
+                _log.warning('PiP failed: $error');
                 break;
             }
           },
         ));
         break;
-      case PlayerType.betterPlayer:
-        betterPlayerController!.addEventsListener((progress) async {
-          _position =
-              betterPlayerController!.videoPlayerController!.value.position;
-          _positionController.add(_position);
-          final duration =
-              betterPlayerController!.videoPlayerController!.value.duration;
-          if (duration != _duration) {
-            _duration = duration ?? Duration.zero;
-            _durationController.add(_duration);
-          }
-          final playing =
-              betterPlayerController!.videoPlayerController!.value.isPlaying;
-          if (playing != _isPlaying) {
-            _isPlaying = playing;
-            _playingController.add(_isPlaying);
-          }
-          final completed =
-              betterPlayerController!.videoPlayerController!.value.position ==
-                  betterPlayerController!.videoPlayerController!.value.duration;
-          if (completed != _completed) {
-            _completed = completed;
-            _completedController.add(_completed);
-          }
-        });
-        betterPlayerController!.addEventsListener((setSpeed) {
-          final speed =
-              betterPlayerController!.videoPlayerController!.value.speed;
-          if (speed != _playbackSpeed) {
-            _playbackSpeedController.add(speed);
-            _playbackSpeed = speed;
-          }
-        });
-        break;
+      // case PlayerType.betterPlayer:
+      //   _betterPlayerController!.addEventsListener((progress) async {
+      //     _position =
+      //         _betterPlayerController!.videoPlayerController!.value.position;
+      //     _positionController.add(_position);
+      //     final duration =
+      //         _betterPlayerController!.videoPlayerController!.value.duration;
+      //     if (duration != _duration) {
+      //       _duration = duration ?? Duration.zero;
+      //       _durationController.add(_duration);
+      //     }
+      //     final playing =
+      //         _betterPlayerController!.videoPlayerController!.value.isPlaying;
+      //     if (playing != _isPlaying) {
+      //       _isPlaying = playing;
+      //       _playingController.add(_isPlaying);
+      //     }
+      //     final completed = _betterPlayerController!
+      //             .videoPlayerController!.value.position ==
+      //         _betterPlayerController!.videoPlayerController!.value.duration;
+      //     if (completed != _completed) {
+      //       _completed = completed;
+      //       _completedController.add(_completed);
+      //     }
+      //   });
+      //   _betterPlayerController!.addEventsListener((setSpeed) {
+      //     final speed =
+      //         _betterPlayerController!.videoPlayerController!.value.speed;
+      //     if (speed != _playbackSpeed) {
+      //       _playbackSpeedController.add(speed);
+      //       _playbackSpeed = speed;
+      //     }
+      //   });
+      //   break;
     }
     positionStream.listen((position) async {
       if (_live != true) {
@@ -524,21 +524,29 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
     List<Map<String, dynamic>>? textTracks,
     ImageModel? timelineSprite,
     List<SeekbarChapter>? chapters,
+    bool isOffline = false,
+    ContentPostV3Response? offlinePost,
+    String? offlineAttachmentId,
+    String? offlineFilePath,
   }) async {
-    print('MediaPlayerService: setSource called with URL: $url');
-    print('MediaPlayerService: title: $title');
+    _log.info('MediaPlayerService: setSource called with URL: $url');
+    _log.info('MediaPlayerService: title: $title');
+    _log.info(
+        'MediaPlayerService: isOffline param=$isOffline, offlinePost=${offlinePost != null}, offlineAttachmentId=$offlineAttachmentId, offlineFilePath=$offlineFilePath');
+    _log.info(
+        'MediaPlayerService: current state - _isOffline=$_isOffline, _currentMediaUrl=$_currentMediaUrl');
     dynamic controller;
     _log.info('Setting source: $url');
     // await _ensureInitialized();
-    // Don't reinitialize if the URL hasn't changed
-    if (_currentMediaUrl == url) {
+    // Don't reinitialize if the URL hasn't changed (unless it's offline, always preserve offline state)
+    if (_currentMediaUrl == url && !isOffline) {
       _log.info('Source URL unchanged, skipping initialization');
       // Return the existing controller so the widget can use it
       switch (loadedPlayerType) {
         case PlayerType.mediaKit:
           return _videoController;
-        case PlayerType.betterPlayer:
-          return betterPlayerController;
+        // case PlayerType.betterPlayer:
+        //   return _betterPlayerController;
         default:
           return null;
       }
@@ -547,6 +555,12 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       _log.info('Updating media source...');
       _whitelabelName = whitelabelName;
       _live = live;
+      _log.info(
+          'Setting offline state: _isOffline=$isOffline, _offlinePost=${offlinePost != null}, _offlineAttachmentId=$offlineAttachmentId, _offlineFilePath=$offlineFilePath');
+      _isOffline = isOffline;
+      _offlinePost = offlinePost;
+      _offlineAttachmentId = offlineAttachmentId;
+      _offlineFilePath = offlineFilePath;
       _currentMediaUrl = url;
       _currentMediaType = type;
       _currentTitle = title;
@@ -569,7 +583,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _log.warning('Failed to auto-initialize subtitles: $e', e, st);
         }
       }
-      if (qualities != null) {
+      if (qualities != null && qualities.isNotEmpty) {
         _availableQualities = qualities;
         _currentQuality = qualities.first;
         String? preferredQuality = await settings.getKey('preferred_quality');
@@ -604,23 +618,23 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       _whitelabel =
           whitelabels.getWhitelabel(_whitelabelName ?? 'Unknown Whitelabel');
       // SimplePip instance is now created in the overlay with proper exit callback
-      late PlayerType player;
-      final playerTypeString = await Settings().getKey('player_backend');
-      if (playerTypeString.isEmpty) {
-        player = Platform.isAndroid || Platform.isIOS
-            ? PlayerType.betterPlayer
-            : PlayerType.mediaKit;
-      } else {
-        player = PlayerType.values.firstWhere(
-          (e) => e.toString() == 'PlayerType.$playerTypeString',
-          orElse: () => Platform.isAndroid || Platform.isIOS
-              ? PlayerType.betterPlayer
-              : PlayerType.mediaKit,
-        );
-      }
-      if (loadedPlayerType! != player) {
-        await loadPlayer(player);
-      }
+      // late PlayerType player;
+      // final playerTypeString = await Settings().getKey('player_backend');
+      // if (playerTypeString.isEmpty) {
+      //   player = Platform.isAndroid || Platform.isIOS
+      //       ? PlayerType.betterPlayer
+      //       : PlayerType.mediaKit;
+      // } else {
+      //   player = PlayerType.values.firstWhere(
+      //     (e) => e.toString() == 'PlayerType.$playerTypeString',
+      //     orElse: () => Platform.isAndroid || Platform.isIOS
+      //         ? PlayerType.betterPlayer
+      //         : PlayerType.mediaKit,
+      //   );
+      // }
+      // if (loadedPlayerType! != player) {
+      //   await loadPlayer(player);
+      // }
       switch (loadedPlayerType!) {
         case PlayerType.mediaKit:
           if (_live == true) {
@@ -657,46 +671,46 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           }
           controller = _videoController;
           break;
-        case PlayerType.betterPlayer:
-          betterPlayerController = BetterPlayerController(
-              BetterPlayerConfiguration(
-                fit: BoxFit.contain,
-                autoPlay: true,
-                autoDetectFullscreenDeviceOrientation: true,
-                autoDetectFullscreenAspectRatio: true,
-                autoDispose: false, // Prevent auto-disposal during navigation
-                startAt: start,
-                handleLifecycle: false,
-                useRootNavigator: false,
-                routePageBuilder: (context, animation1, animation2, child) {
-                  return PiPOverlayPage(
-                    video: child,
-                    mediaService: this,
-                  );
-                },
-              ),
-              betterPlayerDataSource: BetterPlayerDataSource(
-                BetterPlayerDataSourceType.network,
-                url,
-                liveStream: _live,
-                headers: headers ??
-                    {
-                      'User-Agent': userAgent,
-                      'Referer': 'https://www.${_whitelabel?.domain}/',
-                      'Origin': 'https://www.${_whitelabel?.domain}',
-                      ...await OAuth2Service.instance
-                          .getAuthHeaders(_whitelabel!.friendlyName),
-                    },
-                resolutions: qualities?.asMap().map((index, quality) =>
-                        MapEntry(quality.label, quality.url)) ??
-                    {},
-                subtitles: const [],
-                videoFormat: BetterPlayerVideoFormat.hls,
-              ));
-          betterPlayerController!.setControlsEnabled(false);
-          _setupPlayerListeners();
-          controller = betterPlayerController;
-          break;
+        // case PlayerType.betterPlayer:
+        //   _betterPlayerController = BetterPlayerController(
+        //       BetterPlayerConfiguration(
+        //         fit: BoxFit.contain,
+        //         autoPlay: true,
+        //         autoDetectFullscreenDeviceOrientation: true,
+        //         autoDetectFullscreenAspectRatio: true,
+        //         autoDispose: false, // Prevent auto-disposal during navigation
+        //         startAt: start,
+        //         handleLifecycle: false,
+        //         useRootNavigator: false,
+        //         routePageBuilder: (context, animation1, animation2, child) {
+        //           return PiPOverlayPage(
+        //             video: child,
+        //             mediaService: this,
+        //           );
+        //         },
+        //       ),
+        //       betterPlayerDataSource: BetterPlayerDataSource(
+        //         BetterPlayerDataSourceType.network,
+        //         url,
+        //         liveStream: _live,
+        //         headers: headers ??
+        //             {
+        //               'User-Agent': userAgent,
+        //               'Referer': 'https://www.${_whitelabel?.domain}/',
+        //               'Origin': 'https://www.${_whitelabel?.domain}',
+        //               ...await OAuth2Service.instance
+        //                   .getAuthHeaders(_whitelabel!.friendlyName),
+        //             },
+        //         resolutions: qualities?.asMap().map((index, quality) =>
+        //                 MapEntry(quality.label, quality.url)) ??
+        //             {},
+        //         subtitles: const [],
+        //         videoFormat: BetterPlayerVideoFormat.hls,
+        //       ));
+        //   _betterPlayerController!.setControlsEnabled(false);
+        //   _setupPlayerListeners();
+        //   controller = _betterPlayerController;
+        //   break;
       }
       // Update media metadata
       if (type == MediaType.audio || type == MediaType.video) {
@@ -783,10 +797,10 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           changeState(MediaPlayerState.pip);
         }
         break;
-      case PlayerType.betterPlayer:
-        _betterPlayerPipActive = true;
-        betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
-        break;
+      // case PlayerType.betterPlayer:
+      //   _betterPlayerPipActive = true;
+      //   _betterPlayerController!.enablePictureInPicture(betterPlayerGlobalKey);
+      //   break;
     }
   }
 
@@ -809,15 +823,15 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _isPlaying = true;
           _playingController.add(_isPlaying);
         }
-      case PlayerType.betterPlayer:
-        if (betterPlayerController != null) {
-          if (_currentMediaType == MediaType.audio ||
-              _currentMediaType == MediaType.video) {
-            await betterPlayerController!.videoPlayerController!.play();
-            _isPlaying = true;
-            _playingController.add(_isPlaying);
-          }
-        }
+      // case PlayerType.betterPlayer:
+      //   if (_betterPlayerController != null) {
+      //     if (_currentMediaType == MediaType.audio ||
+      //         _currentMediaType == MediaType.video) {
+      //       await _betterPlayerController!.videoPlayerController!.play();
+      //       _isPlaying = true;
+      //       _playingController.add(_isPlaying);
+      //     }
+      //   }
     }
   }
 
@@ -831,15 +845,15 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _isPlaying = false;
           _playingController.add(_isPlaying);
         }
-      case PlayerType.betterPlayer:
-        if (betterPlayerController != null) {
-          if (_currentMediaType == MediaType.audio ||
-              _currentMediaType == MediaType.video) {
-            await betterPlayerController!.videoPlayerController!.pause();
-            _isPlaying = false;
-            _playingController.add(_isPlaying);
-          }
-        }
+      // case PlayerType.betterPlayer:
+      //   if (_betterPlayerController != null) {
+      //     if (_currentMediaType == MediaType.audio ||
+      //         _currentMediaType == MediaType.video) {
+      //       await _betterPlayerController!.videoPlayerController!.pause();
+      //       _isPlaying = false;
+      //       _playingController.add(_isPlaying);
+      //     }
+      //   }
     }
   }
 
@@ -860,14 +874,14 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           await mediaKit.seek(position);
           _position = position;
         }
-      case PlayerType.betterPlayer:
-        if (betterPlayerController != null) {
-          if (_currentMediaType == MediaType.audio ||
-              _currentMediaType == MediaType.video) {
-            await betterPlayerController!.seekTo(position);
-            _position = position;
-          }
-        }
+      // case PlayerType.betterPlayer:
+      //   if (betterPlayerController != null) {
+      //     if (_currentMediaType == MediaType.audio ||
+      //         _currentMediaType == MediaType.video) {
+      //       await _betterPlayerController!.seekTo(position);
+      //       _position = position;
+      //     }
+      //   }
     }
   }
 
@@ -884,15 +898,15 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
           _volume = volume;
           _volumeController.add(_volume);
         }
-      case PlayerType.betterPlayer:
-        if (betterPlayerController != null) {
-          if (_currentMediaType == MediaType.audio ||
-              _currentMediaType == MediaType.video) {
-            await betterPlayerController!.setVolume(volume);
-            _volume = volume;
-            _volumeController.add(_volume);
-          }
-        }
+      // case PlayerType.betterPlayer:
+      //   if (betterPlayerController != null) {
+      //     if (_currentMediaType == MediaType.audio ||
+      //         _currentMediaType == MediaType.video) {
+      //       await _betterPlayerController!.setVolume(volume);
+      //       _volume = volume;
+      //       _volumeController.add(_volume);
+      //     }
+      //   }
     }
   }
 
@@ -916,9 +930,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         await mediaKit.open(media, play: play);
         _videoController = VideoController(mediaKit);
         break;
-      case PlayerType.betterPlayer:
-        betterPlayerController!.setResolution(quality.url);
-        break;
+      // case PlayerType.betterPlayer:
+      //   _betterPlayerController!.setResolution(quality.url);
+      //   break;
     }
     _currentQuality = quality;
     settings.setKey('preferred_quality', quality.label);
@@ -991,9 +1005,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       case PlayerType.mediaKit:
         await mediaKit.setRate(speed);
         break;
-      case PlayerType.betterPlayer:
-        betterPlayerController!.setSpeed(speed);
-        break;
+      // case PlayerType.betterPlayer:
+      //   _betterPlayerController!.setSpeed(speed);
+      //   break;
     }
     _playbackSpeed = speed;
   }
@@ -1034,7 +1048,7 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
         _log.warning('Subtitle track has no URL');
         return;
       }
-      print(url);
+      _log.fine('Loading subtitle from URL: $url');
       final dio = Dio();
       final resp = await dio.get<String>(url,
           options: Options(responseType: ResponseType.plain));
@@ -1076,9 +1090,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
 
   Future<void> dispose() async {
     switch (loadedPlayerType!) {
-      case PlayerType.betterPlayer:
-        betterPlayerController?.dispose();
-        break;
+      // case PlayerType.betterPlayer:
+      //   betterPlayerController?.dispose();
+      //   break;
       case PlayerType.mediaKit:
         await mediaKit.dispose();
         if (mediaKitPlayer != null) {
@@ -1110,30 +1124,30 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       case PlayerType.mediaKit:
         await mediaKit.stop();
         break;
-      case PlayerType.betterPlayer:
-        betterPlayerController?.pause();
-        break;
+      // case PlayerType.betterPlayer:
+      //   betterPlayerController?.pause();
+      //   break;
     }
   }
 
   Future<bool> isPipAvailable() async {
     switch (loadedPlayerType!) {
       case PlayerType.mediaKit:
-        if (Platform.isAndroid || Platform.isIOS) {
+        if (Platform.isAndroid) {
           return await _pipController.isSupported();
         } else if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
           return true;
         } else {
           return false;
         }
-      case PlayerType.betterPlayer:
-        if (Platform.isAndroid) {
-          return false;
-        } else if (Platform.isIOS) {
-          return betterPlayerController != null &&
-              await betterPlayerController!.isPictureInPictureSupported();
-        }
-        return false;
+      // case PlayerType.betterPlayer:
+      //   if (Platform.isAndroid) {
+      //     return false;
+      //   } else if (Platform.isIOS) {
+      //     return betterPlayerController != null &&
+      //         await _betterPlayerController!.isPictureInPictureSupported();
+      //   }
+      //   return false;
     }
   }
 

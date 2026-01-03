@@ -10,6 +10,47 @@ class Middleware {
   bool get useCookieAuth =>
       const bool.fromEnvironment('USE_COOKIE_AUTH', defaultValue: false);
 
+  /// Check if the user was previously authenticated (has stored tokens/cookies)
+  /// This is different from isAuthenticated - it checks if credentials exist,
+  /// not if they're currently valid
+  Future<bool> wasPreviouslyAuthenticated(
+      {String? whitelabelFriendlyName}) async {
+    final whitelabelsToCheck = whitelabelFriendlyName != null
+        ? [whitelabels.getWhitelabel(whitelabelFriendlyName)]
+        : whitelabels.getWhitelabels();
+
+    for (var whitelabel in whitelabelsToCheck) {
+      final authMethod = await _oauth2Service.getAuthMethod(
+          whitelabel: whitelabel.friendlyName);
+
+      final useCookie =
+          (authMethod == 'cookie') || (authMethod == null && useCookieAuth);
+
+      if (!useCookie) {
+        // Check if OAuth2 tokens exist (regardless of expiration)
+        final hasTokens = await _oauth2Service.hasStoredTokens(
+            whitelabel: whitelabel.friendlyName);
+        if (hasTokens) return true;
+      } else {
+        // Check if cookies exist (regardless of expiration)
+        final cookieJar = fpApiRequests.cookieJar;
+        final uri = Uri.parse('https://${whitelabel.domain}/');
+        final cookies = await cookieJar.loadForRequest(uri);
+
+        final authCookie = cookies.firstWhere(
+          (c) => c.name == whitelabel.cookieName,
+          orElse: () => Cookie('', ''),
+        );
+
+        if (authCookie.name.isNotEmpty && authCookie.value.isNotEmpty) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   Future<bool> isAuthenticated({String? whitelabelFriendlyName}) async {
     final whitelabelsToCheck = whitelabelFriendlyName != null
         ? [whitelabels.getWhitelabel(whitelabelFriendlyName)]

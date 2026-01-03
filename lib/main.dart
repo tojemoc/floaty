@@ -1,11 +1,12 @@
 import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
 import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
+import 'package:floaty/features/download/controllers/fp_download_service.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dart';
 import 'package:floaty/features/router/controllers/router.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
-// import 'package:floaty/features/logs/repositories/log_service.dart';
+import 'package:floaty/features/logs/repositories/log_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
@@ -20,12 +21,14 @@ import 'package:flutter/foundation.dart';
 import 'package:app_links/app_links.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:get_it/get_it.dart';
-import 'package:floaty/features/api/repositories/download_manager.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 import 'package:logging/logging.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:path/path.dart' as p;
+import 'package:connectivity_plus/connectivity_plus.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
 // import 'package:firebase_core/firebase_core.dart';
@@ -39,15 +42,22 @@ void main() async {
 
   Logger.root.level = Level.ALL;
 
-  // Configure logging to print to console
-  Logger.root.onRecord.listen((record) {
-    // ignore: avoid_print
-    print(
-        '[${record.level.name}] ${record.loggerName}: ${record.message}${record.error != null ? '\n${record.error}' : ''}${record.stackTrace != null ? '\n${record.stackTrace}' : ''}');
-  });
-
   final dir = await getApplicationSupportDirectory();
   await Hive.initFlutter(dir.path);
+
+  // Initialize LogService to capture logs
+  await LogService.init();
+
+  // Configure logging to print to console and save to LogService
+  Logger.root.onRecord.listen((record) {
+    final logMessage =
+        '[${record.level.name}] ${record.loggerName}: ${record.message}${record.error != null ? '\n${record.error}' : ''}${record.stackTrace != null ? '\n${record.stackTrace}' : ''}';
+    // ignore: avoid_print
+    print(logMessage);
+
+    // Save to LogService for viewing in app
+    LogService.addLog(logMessage);
+  });
   await Hive.openBox('settings');
   const flavor =
       String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
@@ -55,8 +65,23 @@ void main() async {
   // Initialize MediaKit
   MediaKit.ensureInitialized();
 
-  // Initialize download manager
-  await DownloadManager().initialize();
+  // Monitor connectivity and sync offline progress when online
+  if (!kIsWeb) {
+    final connectivity = Connectivity();
+    connectivity.onConnectivityChanged.listen((result) async {
+      if (result.contains(ConnectivityResult.mobile) ||
+          result.contains(ConnectivityResult.wifi) ||
+          result.contains(ConnectivityResult.ethernet)) {
+        try {
+          final whitelabel = await Whitelabels().getSelectedWhitelabel();
+          await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
+        } catch (e) {
+          debugPrint(
+              'Failed to sync offline progress on connectivity change: $e');
+        }
+      }
+    });
+  }
 
   // Initialize protocol handler and register custom protocol
   if (!kIsWeb) {
@@ -110,6 +135,17 @@ void main() async {
   getIt.registerSingleton<WhenPlaneIntegration>(
     WhenPlaneIntegration(),
   );
+
+  // Initialize Floatplane download service
+  await _initFPDownloadService();
+
+  // Sync offline progress on app startup
+  try {
+    final whitelabel = await Whitelabels().getSelectedWhitelabel();
+    await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
+  } catch (e) {
+    debugPrint('Failed to sync offline progress on startup: $e');
+  }
 
   getIt.registerSingleton<UpdaterController>(
     UpdaterController(),
@@ -514,8 +550,7 @@ class MyApp extends StatelessWidget {
                 }
             }
 
-            //TODO: later
-            // updatercontroller.initialCheck();
+            updatercontroller.initialCheck();
 
             return MaterialApp.router(
               // Force rebuild when theme settings change
@@ -570,4 +605,26 @@ class _AppWindowListener extends WindowListener {
   void onWindowClose() async {
     await windowManager.hide();
   }
+}
+
+/// Initialize the Floatplane download service
+Future<void> _initFPDownloadService() async {
+  // Initialize FFI database for desktop platforms
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
+  // Open/create the database for FP downloads
+  final dbPath = p.join(await getDatabasesPath(), 'fp_downloads.db');
+  final db = await openDatabase(
+    dbPath,
+    version: 1,
+    onCreate: (Database db, int version) async {
+      // Tables will be created by fpDownloadService.init()
+    },
+  );
+
+  // Initialize the FP download service
+  await fpDownloadService.init(db);
 }

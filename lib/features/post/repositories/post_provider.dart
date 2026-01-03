@@ -532,10 +532,11 @@ final downloadOptionsProvider =
 // Media Quality Provider
 final mediaQualityProvider = FutureProvider.family<List<VideoQuality>, String>(
     (ref, attachmentId) async {
-  final res = await fpApiRequests.getDelivery(
+  final deliveryResponse = await fpApiRequests.getDelivery(
       (await whitelabels.getSelectedWhitelabel()).friendlyName,
       'onDemand',
       attachmentId);
+  final res = deliveryResponse['body'] as String;
   final decoded = jsonDecode(res);
 
   List<VideoQuality> qualities = [];

@@ -15,7 +15,7 @@ final WhenPlaneIntegration whenPlaneIntegration =
 class WhenPlaneIntegration {
   static String baseUrl = 'https://whenplane.com/api';
   PackageInfo? packageInfo;
-  String userAgent = 'FloatyClient/error, CFNetwork';
+  String userAgent = 'FloatyClient/error';
 
   final List<String> alternates = [
     "late",
@@ -47,7 +47,7 @@ class WhenPlaneIntegration {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     userAgent =
-        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor, CFNetwork';
+        'FloatyClient/${packageInfo?.version}+${packageInfo?.buildNumber}-$flavor';
   }
 
   Future<void> initHttp() async {

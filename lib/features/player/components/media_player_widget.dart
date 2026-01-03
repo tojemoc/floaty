@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'package:logging/logging.dart';
 
-import 'package:better_player_plus/better_player_plus.dart';
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/player/components/custom_player/custom_player.dart';
 import 'package:floaty/features/player/models/seekbar_chapter.dart';
@@ -31,6 +31,9 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
   final MediaPlayerState initialState;
   final List<Map<String, dynamic>>? textTracks;
   final List<SeekbarChapter>? chapters;
+  final ContentPostV3Response? offlinePost;
+  final String? offlineAttachmentId;
+  final String? offlineFilePath;
   const MediaPlayerWidget({
     super.key,
     required this.whitelabelName,
@@ -51,6 +54,9 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
     required this.live,
     this.textTracks,
     this.chapters,
+    this.offlinePost,
+    this.offlineAttachmentId,
+    this.offlineFilePath,
   });
   @override
   ConsumerState<MediaPlayerWidget> createState() => _MediaPlayerWidgetState();
@@ -58,6 +64,7 @@ class MediaPlayerWidget extends ConsumerStatefulWidget {
 
 class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
     with WidgetsBindingObserver {
+  final Logger _log = Logger('MediaPlayerWidget');
   bool subtitlesEnabled = false;
   late MediaPlayerService _mediaService;
   bool _isInitialized = false;
@@ -82,7 +89,12 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
   }
 
   Future<void> _initializePlayer() async {
-    print('Initializing player...');
+    _log.info('Initializing player...');
+    _log.info(
+        'MediaPlayerWidget offline params: offlinePost=${widget.offlinePost != null}, offlineAttachmentId=${widget.offlineAttachmentId}, offlineFilePath=${widget.offlineFilePath}');
+    _log.info('MediaPlayerWidget URL: ${widget.mediaUrl}');
+    _log.info(
+        'MediaPlayerWidget isOffline check: ${widget.mediaUrl.startsWith('file://')}');
     subtitlesEnabled =
         ref.read(mediaPlayerServiceProvider.notifier).subtitlesEnabled;
     _mediaService = ref.read(mediaPlayerServiceProvider.notifier);
@@ -103,12 +115,16 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
       textTracks: widget.textTracks,
       timelineSprite: widget.timelineSprite,
       chapters: widget.chapters,
+      isOffline: widget.mediaUrl.startsWith('file://'),
+      offlinePost: widget.offlinePost,
+      offlineAttachmentId: widget.offlineAttachmentId,
+      offlineFilePath: widget.offlineFilePath,
     );
 
     pipAvailable = await _mediaService.isPipAvailable();
 
-    print('Player initialized');
-    print('Initial state: ${widget.initialState}');
+    _log.info('Player initialized');
+    _log.info('Initial state: ${widget.initialState}');
     await _mediaService.changeState(widget.initialState);
     if (mounted) {
       setState(() {
@@ -121,7 +137,7 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
   }
 
   Widget _buildMediaContent() {
-    print('Building media content...');
+    _log.fine('Building media content...');
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     switch (widget.mediaType) {
@@ -134,23 +150,23 @@ class _MediaPlayerWidgetState extends ConsumerState<MediaPlayerWidget>
           ));
         }
         Widget videoWidget;
-        print('check');
+        _log.fine('Checking controller type');
         if (_controller is VideoController) {
-          print('MediaKit');
+          _log.fine('Using MediaKit player');
           videoWidget = Video(
             key: ValueKey('v-${widget.postId ?? widget.mediaUrl}'),
             controller: videoController,
             controls: NoVideoControls,
             pauseUponEnteringBackgroundMode: false,
           );
-        } else if (_controller is BetterPlayerController) {
-          print('BetterPlayer');
-          videoWidget = BetterPlayer(
-            key: _mediaService.betterPlayerGlobalKey,
-            controller: _mediaService.betterPlayer,
-          );
+          // } else if (_controller is BetterPlayerController) {
+          //   print('BetterPlayer');
+          //   videoWidget = BetterPlayer(
+          //     key: _mediaService.betterPlayerGlobalKey,
+          //     controller: _mediaService.betterPlayer,
+          //   );
         } else {
-          print('Unknown Player Type');
+          _log.warning('Unknown Player Type');
           videoWidget = const SizedBox.shrink();
         }
 
