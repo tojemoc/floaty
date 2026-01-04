@@ -69,7 +69,10 @@ jobs:
       - name: Install basic dependencies in container
         run: |
           apt-get update
-          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file jq cmake ninja-build pkg-config clang lld
+          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file jq cmake ninja-build pkg-config clang-14 lld-14
+          # Create symlinks so Flutter finds the linker
+          ln -sf /usr/bin/ld.lld-14 /usr/bin/ld.lld
+          ln -sf /usr/bin/lld-14 /usr/bin/lld
       
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -231,11 +234,39 @@ jobs:
       
       - name: Build signed Android APK
         run: |
-          flutter build apk --release -v --flavor ${{ github.ref_name }} --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
-          echo "Built APKs:"
-          ls -la build/app/outputs/flutter-apk/
-          echo "All APK files in build:"
-          find build -name "*.apk" -type f
+          set -e
+          BRANCH="${{ github.ref_name }}"
+          echo "Building Android APK for flavor: $BRANCH"
+
+          if flutter build apk --release -v --flavor "$BRANCH" --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}; then
+            echo "flutter build apk succeeded"
+          else
+            echo "flutter build apk failed — attempting Gradle fallback to locate APKs"
+            cd android
+            # Capitalize first letter for Gradle variant name (e.g. nightly -> Nightly)
+            VAR_CAP="$(tr '[:lower:]' '[:upper:]' <<< "${BRANCH:0:1}")${BRANCH:1}"
+            echo "Attempting assemble${VAR_CAP}Release"
+            ./gradlew --no-daemon assemble${VAR_CAP}Release || true
+            cd ..
+
+            # Try to find any APK produced by Gradle and copy into flutter-apk output dir
+            FOUND_APK=$(find . -path "*/build/*" -type f -name "*-${BRANCH}-release.apk" -o -name "*-${VAR_CAP}Release.apk" -o -name "app-release.apk" | head -n 1 || true)
+            if [ -n "$FOUND_APK" ]; then
+              echo "Found APK: $FOUND_APK"
+              mkdir -p build/app/outputs/flutter-apk
+              cp "$FOUND_APK" "build/app/outputs/flutter-apk/app-${BRANCH}-release.apk"
+              echo "Copied APK to build/app/outputs/flutter-apk/app-${BRANCH}-release.apk"
+            else
+              echo "No APK found after Gradle fallback"
+              find . -path "*/build/*" -type f -name "*.apk" || true
+              exit 1
+            fi
+          fi
+
+          echo "Built APKs in flutter-apk dir:"
+          ls -la build/app/outputs/flutter-apk/ || true
+          echo "All APK files in build tree:"
+          find . -path "*/build/*" -type f -name "*.apk" || true
       
       - name: Get version from pubspec.yaml
         id: get_version
