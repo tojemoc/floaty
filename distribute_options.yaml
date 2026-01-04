@@ -49,15 +49,6 @@ releases:
             flavor: development
             dart-define:
               FLUTTER_FLAVOR: dev
-      - name: release-development-ios-ipa
-        package:
-          platform: ios
-          target: ipa
-          build_args:
-            flavor: development
-            export-options-plist: ios/release_ExportOptions.plist
-            dart-define:
-              FLUTTER_FLAVOR: dev
   - name: releaselinux
     jobs:
       - name: release-release-linux-rpm
@@ -105,15 +96,6 @@ releases:
           target: dmg
           build_args:
             flavor: production
-            dart-define:
-              FLUTTER_FLAVOR: release
-      - name: release-production-ios-ipa
-        package:
-          platform: ios
-          target: ipa
-          build_args:
-            flavor: production
-            export-options-plist: ios/release_ExportOptions.plist
             dart-define:
               FLUTTER_FLAVOR: release
   - name: betalinux
@@ -165,15 +147,6 @@ releases:
             flavor: beta
             dart-define:
               FLUTTER_FLAVOR: beta
-      - name: release-beta-ios-ipa
-        package:
-          platform: ios
-          target: ipa
-          build_args:
-            flavor: beta
-            export-options-plist: ios/release_ExportOptions.plist
-            dart-define:
-              FLUTTER_FLAVOR: beta
   - name: nightlylinux
     jobs:
       - name: release-nightly-linux-rpm
@@ -221,14 +194,5 @@ releases:
           target: dmg
           build_args:
             flavor: nightly
-            dart-define:
-              FLUTTER_FLAVOR: nightly
-      - name: release-nightly-ios-ipa
-        package:
-          platform: ios
-          target: ipa
-          build_args:
-            flavor: nightly
-            export-options-plist: ios/release_ExportOptions.plist
             dart-define:
               FLUTTER_FLAVOR: nightly

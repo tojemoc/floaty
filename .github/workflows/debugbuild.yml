@@ -101,7 +101,8 @@ jobs:
           apt-get install -y \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
-            libmpv-dev
+            libmpv-dev \
+            libasound2-dev
       
       - name: Set glibc compatibility
         run: |
@@ -225,12 +226,15 @@ jobs:
             exit 1
           fi
       
+      - name: Clean before build
+        run: flutter clean
+      
       - name: Build signed Android APK
         run: |
           flutter build apk --release -v
-          echo "Built APK:"
+          echo "Built APKs:"
           ls -la build/app/outputs/flutter-apk/
-          echo "Checking for APK files:"
+          echo "All APK files in build:"
           find build -name "*.apk" -type f
       
       - name: Get version from pubspec.yaml
