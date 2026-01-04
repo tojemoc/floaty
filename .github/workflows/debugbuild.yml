@@ -61,7 +61,7 @@ jobs:
 
   LINUX:
     name: Linux
-    runs-on: ubuntu-2204
+    runs-on: ubuntu-22.04
     needs: VERSION_BUMP
     steps:
       - name: Checkout repository
