@@ -69,7 +69,7 @@ jobs:
       - name: Install basic dependencies in container
         run: |
           apt-get update
-          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file
+          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file jq
       
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -188,7 +188,7 @@ jobs:
 
   ANDROID:
     name: Android
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: VERSION_BUMP
     steps:
       - name: Checkout repository
