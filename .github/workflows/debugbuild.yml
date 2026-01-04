@@ -69,7 +69,7 @@ jobs:
       - name: Install basic dependencies in container
         run: |
           apt-get update
-          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file jq cmake ninja-build pkg-config clang
+          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file jq cmake ninja-build pkg-config clang lld
       
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -231,7 +231,7 @@ jobs:
       
       - name: Build signed Android APK
         run: |
-          flutter build apk --release -v
+          flutter build apk --release -v --flavor ${{ github.ref_name }} --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
           echo "Built APKs:"
           ls -la build/app/outputs/flutter-apk/
           echo "All APK files in build:"
@@ -250,7 +250,21 @@ jobs:
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
           
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/$VERSION/floaty-${VERSION}-android.apk"
+          APK_FLAVORED="build/app/outputs/flutter-apk/app-${{ github.ref_name }}-release.apk"
+          APK_DEFAULT="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ -f "$APK_FLAVORED" ]; then
+            cp "$APK_FLAVORED" "dist/$VERSION/floaty-${VERSION}-android.apk"
+            echo "Copied flavored APK: $APK_FLAVORED"
+          elif [ -f "$APK_DEFAULT" ]; then
+            cp "$APK_DEFAULT" "dist/$VERSION/floaty-${VERSION}-android.apk"
+            echo "Copied default APK: $APK_DEFAULT"
+          else
+            echo "Error: No APK found to copy"
+            find build -name "*.apk" -type f || true
+            exit 1
+          fi
+
           echo "APK prepared:"
           ls -la "dist/$VERSION/"
       
@@ -297,8 +311,26 @@ jobs:
       - name: Build and release
         run: fastforge release --name ${{ github.ref_name }}macos
 
+      - name: Determine iOS flavor
+        id: ios_flavor
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == "release" ]]; then
+            FLAVOR="production"
+          elif [[ "$BRANCH" == "beta" ]]; then
+            FLAVOR="beta"
+          elif [[ "$BRANCH" == "nightly" ]]; then
+            FLAVOR="nightly"
+          elif [[ "$BRANCH" == "dev" ]]; then
+            FLAVOR="development"
+          else
+            FLAVOR="nightly"
+          fi
+          echo "flavor=$FLAVOR" >> $GITHUB_OUTPUT
+          echo "Building iOS with flavor: $FLAVOR"
+
       - name: Build iOS app
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --flavor ${{ steps.ios_flavor.outputs.flavor }} --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
 
       - name: Get version from pubspec.yaml
         id: get_version
