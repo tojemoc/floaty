@@ -12,20 +12,273 @@ permissions:
 
 env:
   DEPLOYMENT_API_KEY: ${{ secrets.DEPLOYMENT_API_KEY }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  MACOSIOS:
-    name: MacOS & iOS
-    runs-on: macos-latest
+  VERSION_BUMP:
+    name: Bump Version
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Check if version bump should be skipped
+        id: check_skip
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
+          if [[ "$COMMIT_MSG" == *"--no-bump"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping version bump"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Proceeding with version bump"
+          fi
+      
+      - name: Bump version
+        if: steps.check_skip.outputs.skip != 'true'
+        run: |
+          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          echo "Current version: $CURRENT_VERSION"
+          
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          NEW_PATCH=$((patch + 1))
+          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          echo "New version: $NEW_VERSION"
+          
+          sed -i "s/^version: .*/version: $NEW_VERSION/" pubspec.yaml
+          
+          echo "Updated pubspec.yaml:"
+          grep '^version:' pubspec.yaml
+      
+      - name: Commit version bump
+        if: steps.check_skip.outputs.skip != 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Automated Version Bump
+          push_options: '--force'
+          skip_dirty_check: true
+
+  LINUX:
+    name: Linux
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: VERSION_BUMP
+    container:
+      image: ubuntu:22.04
+    steps:
+      - name: Install basic dependencies in container
+        run: |
+          apt-get update
+          apt-get install -y curl git unzip xz-utils zip libglu1-mesa file
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.4"
+          cache: true
+
+      - name: Create secret files
+        run: |
+          mkdir -p lib/utils
+          mkdir -p android
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
+          echo "Created files:"
+          ls -la lib/ lib/utils android/ android/app/
+      
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      
+      - name: Install Linux dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libmpv-dev
+      
+      - name: Set glibc compatibility
+        run: |
+          # Build with maximum glibc compatibility
+          export GLIBC_COMPATIBILITY=1
+          export CFLAGS="-march=x86-64 -mtune=generic"
+          export CXXFLAGS="-march=x86-64 -mtune=generic"
+      
+      - name: Install dependencies for AppImage
+        run: |
+          apt install -y locate wget
+          wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          mv appimagetool /usr/local/bin/
+
+      - name: Prepare make_config.yaml
+        run: |
+          OS=linux
+          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
+            target_dir=$(dirname "$config_file")
+            cp "$config_file" "${target_dir}/make_config.yaml"
+            echo "Copied $config_file → ${target_dir}/make_config.yaml"
+          done
+      
+      - name: Install Fastforge
+        run: dart pub global activate fastforge
+        
+      - name: Build and release
+        run: fastforge release --name ${{ github.ref_name }}linux
+
+      - name: Replace AppRun
+        run: |
+          # Find the AppImage file
+          APPIMAGE_FILE=$(find dist -name "*.AppImage" -type f | head -1)
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "No AppImage found, skipping AppRun replacement"
+            exit 0
+          fi
+          
+          # Convert to absolute path
+          APPIMAGE_FILE="$(cd "$(dirname "$APPIMAGE_FILE")" && pwd)/$(basename "$APPIMAGE_FILE")"
+          echo "Found AppImage: $APPIMAGE_FILE"
+          
+          # Make AppImage executable
+          chmod +x "$APPIMAGE_FILE"
+          
+          # Extract the AppImage
+          APPIMAGE_DIR=$(mktemp -d)
+          echo "Extracting to: $APPIMAGE_DIR"
+          cd "$APPIMAGE_DIR"
+          "$APPIMAGE_FILE" --appimage-extract
+          
+          # Check if extraction was successful
+          if [ ! -d squashfs-root ]; then
+            echo "Error: AppImage extraction failed"
+            exit 1
+          fi
+          
+          # Replace the AppRun script with our distro-agnostic version
+          if [ -f squashfs-root/AppRun ]; then
+            cp "$GITHUB_WORKSPACE/linux/packaging/appimage/AppRun" squashfs-root/AppRun
+            chmod +x squashfs-root/AppRun
+            echo "Replaced AppRun script"
+          else
+            echo "Warning: AppRun not found in extracted AppImage"
+          fi
+          
+          # Rebuild the AppImage
+          cd "$GITHUB_WORKSPACE"
+          appimagetool -n "$APPIMAGE_DIR/squashfs-root" "$APPIMAGE_FILE"
+          rm -rf "$APPIMAGE_DIR"
+          echo "AppImage rebuilt with custom AppRun"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/
+
+  ANDROID:
+    name: Android
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.4"
+          cache: true
+
+      - name: Create secret files
+        run: |
+          mkdir -p lib/utils
+          mkdir -p android
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
+          echo "${{ secrets.keyproperties }}" | tr -d '\r' > android/key.properties
+          echo "${{ secrets.uploadkeystore }}" | base64 -d > android/app/upload-keystore.jks
+          echo "Created files:"
+          ls -la lib/ lib/utils android/ android/app/
+      
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      
+      - name: Verify signing configuration
+        run: |
+          echo "Checking signing files:"
+          if [ -f android/key.properties ]; then
+            echo "✓ key.properties exists"
+          else
+            echo "✗ key.properties missing"
+            exit 1
+          fi
+          if [ -f android/app/upload-keystore.jks ]; then
+            echo "✓ Keystore exists"
+          else
+            echo "✗ Keystore missing"
+            exit 1
+          fi
+      
+      - name: Build signed Android APK
+        run: |
+          flutter build apk --release
+          echo "Built APK:"
+          ls -la build/app/outputs/flutter-apk/
+      
+      - name: Get version from pubspec.yaml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Prepare APK for release
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          mkdir -p "dist/$VERSION"
+          
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/$VERSION/floaty-${VERSION}-android.apk"
+          echo "APK prepared:"
+          ls -la "dist/$VERSION/"
+      
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-android
+          path: dist/
+
+  MACOSIOS:
+    name: MacOS & iOS
+    runs-on: macos-latest
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.29.1"
+          flutter-version: "3.35.4"
           cache: true
+
+      - name: Install appdmg
+        run: npm install -g appdmg
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -43,19 +296,93 @@ jobs:
         run: dart pub global activate fastforge
         
       - name: Build and release
+        run: fastforge release --name ${{ github.ref_name }}macos
+
+      - name: Build iOS app
         run: flutter build ios --release --no-codesign
 
+      - name: Get version from pubspec.yaml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Package iOS IPA
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          mkdir -p "dist/$VERSION"
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          cd dist/$VERSION
+          zip -r "floaty-${VERSION}-ios.ipa" ../../Payload
+          cd ../..
+          rm -rf Payload
+          echo "Packaged IPA:"
+          ls -la "dist/$VERSION/"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos-ios
-          path: build/ios/iphoneos/
+          path: dist/
+
+  WINDOWS:
+    name: Windows
+    runs-on: blacksmith-4vcpu-windows-2025
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.4"
+          cache: true
+
+      - name: Create secret files
+        shell: bash
+        run: |
+          mkdir -p lib/utils
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
+          echo "Created files:"
+          ls -la lib/ lib/utils/
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Prepare make_config.yaml
+        shell: bash  #i hate powershell it can burn in hell
+        run: |
+          OS=windows
+          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
+            target_dir=$(dirname "$config_file")
+            cp "$config_file" "${target_dir}/make_config.yaml"
+            echo "Copied $config_file → ${target_dir}/make_config.yaml"
+          done
+
+      - name: Install Fastforge
+        run: dart pub global activate fastforge
+        
+      - name: Build and release
+        run: fastforge release --name ${{ github.ref_name }}windows
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: dist
+
   DEPLOY:
     name: Deploy Release
-    needs: [MACOSIOS]
+    needs: [LINUX, ANDROID, WINDOWS, MACOSIOS]
     runs-on: ubuntu-latest
-    if: always() && (needs.LINUXANDROID.result == 'success' || needs.WINDOWS.result == 'success' || needs.MACOSIOS.result == 'success')
+    if: always() && (needs.LINUX.result == 'success' || needs.ANDROID.result == 'success' || needs.WINDOWS.result == 'success' || needs.MACOSIOS.result == 'success')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -73,11 +400,14 @@ jobs:
         run: |
           mkdir -p release/{windows,linux,android,macos,ios}
           
-          if [ -d "./artifacts/dist-linux-android" ]; then
-            find ./artifacts/dist-linux-android -name "*.rpm" -exec cp {} release/linux/ \;
-            find ./artifacts/dist-linux-android -name "*.deb" -exec cp {} release/linux/ \;
-            find ./artifacts/dist-linux-android -name "*.AppImage" -exec cp {} release/linux/ \;
-            find ./artifacts/dist-linux-android -name "*.apk" -exec cp {} release/android/ \;
+          if [ -d "./artifacts/dist-linux" ]; then
+            find ./artifacts/dist-linux -name "*.rpm" -exec cp {} release/linux/ \;
+            find ./artifacts/dist-linux -name "*.deb" -exec cp {} release/linux/ \;
+            find ./artifacts/dist-linux -name "*.AppImage" -exec cp {} release/linux/ \;
+          fi
+          
+          if [ -d "./artifacts/dist-android" ]; then
+            find ./artifacts/dist-android -name "*.apk" -exec cp {} release/android/ \;
           fi
           
           if [ -d "./artifacts/dist-windows" ]; then
@@ -274,8 +604,8 @@ jobs:
             🔗 **[View Changelogs](https://floaty.fyi/changelogs#${{ steps.deploy.outputs.deployment_id }})**
             
             This release includes builds for:
-            ${{ needs.LINUXANDROID.result == 'success' && '- 🐧 Linux (RPM, DEB, AppImage)' || '' }}
-            ${{ needs.LINUXANDROID.result == 'success' && '- 🤖 Android (APK)' || '' }}
+            ${{ needs.LINUX.result == 'success' && '- 🐧 Linux (RPM, DEB, AppImage)' || '' }}
+            ${{ needs.ANDROID.result == 'success' && '- 🤖 Android (APK - signed)' || '' }}
             ${{ needs.WINDOWS.result == 'success' && '- 🪟 Windows (EXE Installer)' || '' }}
             ${{ needs.MACOSIOS.result == 'success' && '- 🍎 macOS (DMG, PKG)' || '' }}
             ${{ needs.MACOSIOS.result == 'success' && '- 📱 iOS (IPA)' || '' }}

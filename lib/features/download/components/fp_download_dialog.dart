@@ -301,14 +301,14 @@ class _FPDownloadDialogState extends ConsumerState<FPDownloadDialog> {
               ? 'Download started: ${option.qualityLabel}'
               : 'Failed to start download',
         ),
-        action: success
-            ? SnackBarAction(
-                label: 'View',
-                onPressed: () {
-                  context.push('/downloads');
-                },
-              )
-            : null,
+        // action: success
+        //     ? SnackBarAction(
+        //         label: 'View',
+        //         onPressed: () {
+        //           context.push('/downloads');
+        //         },
+        //       )
+        //     : null,
       ),
     );
 
