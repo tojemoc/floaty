@@ -575,6 +575,25 @@ jobs:
             echo '      },' >> release/manifest.json
           fi
           
+          if ls release/ios/*.ipa >/dev/null 2>&1; then
+            echo '      {' >> release/manifest.json
+            echo '        "platform": "ios",' >> release/manifest.json
+            echo '        "files": [' >> release/manifest.json
+            
+            FIRST=true
+            for file in release/ios/*; do
+              if [ -f "$file" ]; then
+                [ "$FIRST" = false ] && echo ',' >> release/manifest.json
+                filename=$(basename "$file")
+                echo -n "          {\"type\": \"IPA\", \"path\": \"ios/$filename\"}" >> release/manifest.json
+                FIRST=false
+              fi
+            done
+            echo '' >> release/manifest.json
+            echo '        ]' >> release/manifest.json
+            echo '      },' >> release/manifest.json
+          fi
+          
           sed -i '$ s/,$//' release/manifest.json
           echo '    ]' >> release/manifest.json
           echo '  }' >> release/manifest.json
