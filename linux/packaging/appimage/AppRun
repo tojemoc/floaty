@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -u
+
+APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SATURN_BIN="${APPDIR}/Saturn"
+
+export LD_LIBRARY_PATH="${APPDIR}/lib:${APPDIR}/lib64"
+
+SYSTEM_LIBDIRS=(
+    "/usr/lib/x86_64-linux-gnu"      # Debian/Ubuntu
+    "/usr/lib64"                     # Fedora/RHEL/openSUSE (64-bit)
+    "/usr/lib"                       # Generic (many distros)
+    "/lib/x86_64-linux-gnu"          # Debian/Ubuntu
+    "/lib64"                         # Fedora/RHEL/openSUSE (64-bit)
+    "/lib"                           # Generic (Arch, Alpine, etc.)
+    "/usr/local/lib"                 # User-installed libraries
+    "/usr/local/lib64"               # User-installed libraries (64-bit)
+)
+
+for libdir in "${SYSTEM_LIBDIRS[@]}"; do
+    if [ -d "$libdir" ]; then
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${libdir}"
+    fi
+done
+
+# Preserve any existing LD_LIBRARY_PATH from the user's environment
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}"
+fi
+
+if [ -x "$SATURN_BIN" ]; then
+    # check if AOT library exists and is readable
+    if [ -f "${APPDIR}/lib/libapp.so" ]; then
+        export FLUTTER_AOT_LIBRARY="${APPDIR}/lib/libapp.so"
+    fi
+    exec "$SATURN_BIN" "$@"
+fi
+
+# all common locations for the x86-64 dynamic linker
+DYNAMIC_LINKERS=(
+    "/lib64/ld-linux-x86-64.so.2"
+    "/lib/ld-linux-x86-64.so.2"
+    "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+    "/usr/lib64/ld-linux-x86-64.so.2"
+    "/usr/lib/ld-linux-x86-64.so.2"
+)
+
+for ld_path in "${DYNAMIC_LINKERS[@]}"; do
+    if [ -f "$ld_path" ]; then
+        exec "$ld_path" --library-path "${LD_LIBRARY_PATH}" "$SATURN_BIN" "$@"
+    fi
+done
+
+# GG
+echo "Error: Failed to start Saturn" >&2
+echo "" >&2
+echo "Diagnostics:" >&2
+echo "  Saturn binary: $SATURN_BIN" >&2
+echo "  Binary exists: $([ -f "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  Binary executable: $([ -x "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH}" >&2
+echo "" >&2
+echo "To fix this, ensure the following packages are installed:" >&2
+echo "  Arch Linux:        pacman -S gtk3 libayatana-appindicator" >&2
+echo "  Debian/Ubuntu:     apt install libgtk-3-0 libayatana-appindicator3-1" >&2
+echo "  Fedora/RHEL:       dnf install gtk3 libayatana-appindicator" >&2
+echo "  openSUSE:          zypper install gtk3 libayatana-appindicator3" >&2
+exit 1
