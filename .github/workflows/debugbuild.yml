@@ -85,7 +85,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.4"
+          flutter-version: "3.38.4"
           cache: true
 
       - name: Create secret files
@@ -199,7 +199,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.4"
+          flutter-version: "3.38.4"
           cache: true
 
       - name: Create secret files
@@ -274,7 +274,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.4"
+          flutter-version: "3.38.4"
           cache: true
 
       - name: Install appdmg
@@ -341,7 +341,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.4"
+          flutter-version: "3.38.4"
           cache: true
 
       - name: Create secret files
