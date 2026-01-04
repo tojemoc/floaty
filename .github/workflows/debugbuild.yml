@@ -61,27 +61,9 @@ jobs:
 
   LINUX:
     name: Linux
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-2204
     needs: VERSION_BUMP
-    container:
-      image: ubuntu:22.04
     steps:
-      - name: Install basic dependencies in container
-        run: |
-          apt-get update
-          apt-get install -y \
-            build-essential \
-            curl git unzip xz-utils zip \
-            libglu1-mesa file jq \
-            cmake ninja-build pkg-config \
-            clang lld \
-            libstdc++-11-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libmpv-dev \
-            libasound2-dev \
-            locate wget
-      
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
