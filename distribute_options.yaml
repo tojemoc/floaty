@@ -2,15 +2,6 @@ output: dist/
 releases:
   - name: devlinux
     jobs:
-      - name: release-dev-android-apk
-        package:
-          platform: android
-          target: apk
-          build_args:
-            flavor: dev
-            target-platform: android-arm,android-arm64
-            dart-define:
-              FLUTTER_FLAVOR: dev
       - name: release-dev-linux-rpm
         package:
           platform: linux
@@ -69,15 +60,6 @@ releases:
               FLUTTER_FLAVOR: dev
   - name: releaselinux
     jobs:
-      - name: release-release-android-apk
-        package:
-          platform: android
-          target: apk
-          build_args:
-            flavor: release
-            target-platform: android-arm,android-arm64
-            dart-define:
-              FLUTTER_FLAVOR: release
       - name: release-release-linux-rpm
         package:
           platform: linux
@@ -136,15 +118,6 @@ releases:
               FLUTTER_FLAVOR: release
   - name: betalinux
     jobs:
-      - name: release-beta-android-apk
-        package:
-          platform: android
-          target: apk
-          build_args:
-            flavor: beta
-            target-platform: android-arm,android-arm64
-            dart-define:
-              FLUTTER_FLAVOR: beta
       - name: release-beta-linux-rpm
         package:
           platform: linux
@@ -203,15 +176,6 @@ releases:
               FLUTTER_FLAVOR: beta
   - name: nightlylinux
     jobs:
-      - name: release-nightly-android-apk
-        package:
-          platform: android
-          target: apk
-          build_args:
-            flavor: nightly
-            target-platform: android-arm,android-arm64
-            dart-define:
-              FLUTTER_FLAVOR: nightly
       - name: release-nightly-linux-rpm
         package:
           platform: linux
