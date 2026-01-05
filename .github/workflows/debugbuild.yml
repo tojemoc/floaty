@@ -398,6 +398,11 @@ jobs:
           flutter-version: "3.38.4"
           cache: true
 
+      - name: Install Visual Studio ATL components
+        run: |
+          choco install visualstudio2022-workload-nativedesktop --package-parameters "--add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended" -y
+        continue-on-error: true
+
       - name: Install Flutter dependencies
         run: flutter pub get
 
