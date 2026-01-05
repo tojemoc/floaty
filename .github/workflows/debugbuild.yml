@@ -399,9 +399,54 @@ jobs:
           cache: true
 
       - name: Install Visual Studio ATL components
+        shell: pwsh
         run: |
-          choco install visualstudio2022-workload-nativedesktop --package-parameters "--add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended" -y
-        continue-on-error: true
+          Write-Host "Searching for Visual Studio 2022 installations..."
+          
+          # Common VS 2022 installation paths to check
+          $possiblePaths = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community",
+            "C:\Program Files\Microsoft Visual Studio\2022\BuildTools",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
+          )
+          
+          $vsInstallPath = $null
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              Write-Host "Found Visual Studio at: $path"
+              $vsInstallPath = $path
+              break
+            }
+          }
+          
+          if ($null -eq $vsInstallPath) {
+            Write-Host "ERROR: Could not find Visual Studio 2022 installation"
+            exit 1
+          }
+          
+          $vsInstallerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          if (-not (Test-Path $vsInstallerPath)) {
+            Write-Host "ERROR: VS Installer not found at $vsInstallerPath"
+            exit 1
+          }
+          
+          Write-Host "Using VS Installer: $vsInstallerPath"
+          Write-Host "Modifying installation at: $vsInstallPath"
+          Write-Host "Adding component: Microsoft.VisualStudio.Component.VC.ATL"
+          
+          & $vsInstallerPath modify --installPath "$vsInstallPath" --add Microsoft.VisualStudio.Component.VC.ATL --quiet --norestart
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: VS Installer modify command failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          
+          Write-Host "ATL component installation completed successfully"
 
       - name: Install Flutter dependencies
         run: flutter pub get
