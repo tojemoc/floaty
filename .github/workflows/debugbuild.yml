@@ -484,6 +484,7 @@ jobs:
       - name: Generate deployment manifest
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' ' || echo "1.0.0")
+          FLAVOR="${{ github.ref_name }}"
           
           cat > release/manifest.json << EOF
           {
