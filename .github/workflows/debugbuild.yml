@@ -228,32 +228,32 @@ jobs:
         run: |
           set -e
           BRANCH="${{ github.ref_name }}"
-          echo "Building Android APK for flavor: $BRANCH"
-
+          # Map 'release' branch to 'stable' flavor for Android
           if [[ "$BRANCH" == "release" ]]; then
-            BUILD_CMD="flutter build apk --release"
+            FLAVOR="stable"
           else
-            BUILD_CMD="flutter build apk --release --flavor \"$BRANCH\" --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}"
+            FLAVOR="$BRANCH"
           fi
+          echo "Building Android APK for flavor: $FLAVOR"
 
-          if eval "$BUILD_CMD"; then
+          if flutter build apk --release --flavor "$FLAVOR" --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}; then
             echo "flutter build apk succeeded"
           else
             echo "flutter build apk failed — attempting Gradle fallback to locate APKs"
             cd android
             # Capitalize first letter for Gradle variant name (e.g. nightly -> Nightly)
-            VAR_CAP="$(tr '[:lower:]' '[:upper:]' <<< "${BRANCH:0:1}")${BRANCH:1}"
+            VAR_CAP="$(tr '[:lower:]' '[:upper:]' <<< "${FLAVOR:0:1}")${FLAVOR:1}"
             echo "Attempting assemble${VAR_CAP}Release"
             ./gradlew --no-daemon assemble${VAR_CAP}Release || true
             cd ..
 
             # Try to find any APK produced by Gradle and copy into flutter-apk output dir
-            FOUND_APK=$(find . -path "*/build/*" -type f -name "*-${BRANCH}-release.apk" -o -name "*-${VAR_CAP}Release.apk" -o -name "app-release.apk" | head -n 1 || true)
+            FOUND_APK=$(find . -path "*/build/*" -type f -name "*-${FLAVOR}-release.apk" -o -name "*-${VAR_CAP}Release.apk" -o -name "app-release.apk" | head -n 1 || true)
             if [ -n "$FOUND_APK" ]; then
               echo "Found APK: $FOUND_APK"
               mkdir -p build/app/outputs/flutter-apk
-              cp "$FOUND_APK" "build/app/outputs/flutter-apk/app-${BRANCH}-release.apk"
-              echo "Copied APK to build/app/outputs/flutter-apk/app-${BRANCH}-release.apk"
+              cp "$FOUND_APK" "build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk"
+              echo "Copied APK to build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk"
             else
               echo "No APK found after Gradle fallback"
               find . -path "*/build/*" -type f -name "*.apk" || true
@@ -277,9 +277,18 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          
+          # Map 'release' branch to 'stable' flavor
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == "release" ]]; then
+            FLAVOR="stable"
+          else
+            FLAVOR="$BRANCH"
+          fi
+          
           mkdir -p "dist/$VERSION"
           
-          APK_FLAVORED="build/app/outputs/flutter-apk/app-${{ github.ref_name }}-release.apk"
+          APK_FLAVORED="build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk"
           APK_DEFAULT="build/app/outputs/flutter-apk/app-release.apk"
 
           if [ -f "$APK_FLAVORED" ]; then
@@ -682,7 +691,7 @@ jobs:
             **Branch:** `${{ github.ref_name }}`
             **Commit:** `${{ github.sha }}`
           draft: false
-          prerelease: ${{ steps.deploy.outputs.flavor != 'stable' }}
+          prerelease: ${{ steps.deploy.outputs.flavor != 'stable' && steps.deploy.outputs.flavor != 'release' }}
           files: |
             release/windows/*
             release/linux/*

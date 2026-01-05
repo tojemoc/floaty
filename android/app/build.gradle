@@ -66,6 +66,12 @@ android {
     flavorDimensions "version"
 
     productFlavors {
+        stable {
+            dimension "version"
+            applicationIdSuffix ".release"
+            versionNameSuffix "-release"
+            resValue "string", "app_name", "Floaty"
+        }
         beta {
             dimension "version"
             applicationIdSuffix ".beta"
