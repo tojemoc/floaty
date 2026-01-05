@@ -14,7 +14,7 @@ This repository is the tartar sauce spaghetti code of Floaty.
 | **Livestream Page**        | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Livesteam playback**     | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Live Chat**              | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Awaiting Fix from floatplane.             | 
-| **Live Chat Polls**        | ✅           | ✅         | ✅         | ✅           | ✅       | Untested                                  |
+| **Live Chat Polls**        | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
 | **Live Chat Emotes**       | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       |                                           |
 | **Floatplane Settings**    | ⚠️           | ⚠️         | ⚠️         | ⚠️           | ⚠️       | Some settings are there.                  |
 | **Home Page**              | ✅           | ✅         | ✅         | ✅           | ✅       |                                           |
