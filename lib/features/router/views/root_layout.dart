@@ -88,7 +88,6 @@ class RootLayoutState extends ConsumerState<RootLayout>
       if (!subed) {
         subed = true;
         updatercontroller.updateStream.stream.listen((available) {
-          print('Update available stream event: $available');
           setState(() {
             updateReady = available;
           });

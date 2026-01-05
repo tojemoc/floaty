@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:floaty/features/helpers/respositories/capitalize.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
+import 'package:markdown_widget/widget/markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class UpdateScreen extends StatefulWidget {
@@ -286,20 +287,6 @@ class _DropdownCard extends StatefulWidget {
 class _DropdownCardState extends State<_DropdownCard> {
   bool expanded = false;
 
-  TextSpan _parseBold(String text, TextStyle base) {
-    final parts = text.split('**');
-    final children = <TextSpan>[];
-    for (var i = 0; i < parts.length; i++) {
-      if (i.isOdd) {
-        children.add(TextSpan(
-            text: parts[i], style: base.copyWith(fontWeight: FontWeight.bold)));
-      } else {
-        children.add(TextSpan(text: parts[i], style: base));
-      }
-    }
-    return TextSpan(children: children);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -366,11 +353,9 @@ class _DropdownCardState extends State<_DropdownCard> {
                 ),
                 if (expanded) ...[
                   SizedBox(height: 10),
-                  RichText(
-                    text: _parseBold(
-                        widget.content,
-                        theme.textTheme.bodyMedium!
-                            .copyWith(color: colorScheme.onSurfaceVariant)),
+                  MarkdownWidget(
+                    shrinkWrap: true,
+                    data: widget.content,
                   ),
                 ]
               ],
