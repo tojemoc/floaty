@@ -476,12 +476,6 @@ jobs:
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' ' || echo "1.0.0")
           
-          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" || "${{ github.ref_name }}" == "release" ]]; then
-            FLAVOR="stable"
-          else
-            FLAVOR="nightly"
-          fi
-          
           cat > release/manifest.json << EOF
           {
             "version": "$VERSION",
@@ -682,7 +676,7 @@ jobs:
             **Branch:** `${{ github.ref_name }}`
             **Commit:** `${{ github.sha }}`
           draft: false
-          prerelease: ${{ steps.deploy.outputs.flavor != 'stable' && steps.deploy.outputs.flavor != 'release' }}
+          prerelease: ${{ steps.deploy.outputs.flavor != 'release' }}
           files: |
             release/windows/*
             release/linux/*
