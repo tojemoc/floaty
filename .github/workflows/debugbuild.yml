@@ -230,7 +230,13 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           echo "Building Android APK for flavor: $BRANCH"
 
-          if flutter build apk --release --flavor "$BRANCH" --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}; then
+          if [[ "$BRANCH" == "release" ]]; then
+            BUILD_CMD="flutter build apk --release"
+          else
+            BUILD_CMD="flutter build apk --release --flavor \"$BRANCH\" --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}"
+          fi
+
+          if eval "$BUILD_CMD"; then
             echo "flutter build apk succeeded"
           else
             echo "flutter build apk failed — attempting Gradle fallback to locate APKs"
@@ -470,10 +476,8 @@ jobs:
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' ' || echo "1.0.0")
           
-          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
+          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" || "${{ github.ref_name }}" == "release" ]]; then
             FLAVOR="stable"
-          elif [[ "${{ github.ref_name }}" == "release" ]]; then
-            FLAVOR="release"
           else
             FLAVOR="nightly"
           fi
