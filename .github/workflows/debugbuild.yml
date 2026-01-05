@@ -277,9 +277,18 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          
+          # Map 'release' branch to 'stable' flavor
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == "release" ]]; then
+            FLAVOR="stable"
+          else
+            FLAVOR="$BRANCH"
+          fi
+          
           mkdir -p "dist/$VERSION"
           
-          APK_FLAVORED="build/app/outputs/flutter-apk/app-${{ github.ref_name }}-release.apk"
+          APK_FLAVORED="build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk"
           APK_DEFAULT="build/app/outputs/flutter-apk/app-release.apk"
 
           if [ -f "$APK_FLAVORED" ]; then
