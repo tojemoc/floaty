@@ -361,7 +361,7 @@ class ProfileScreenStateWrapperState
   }
 
   void onPostTap(String postId) {
-    context.go('/post/$postId');
+    context.push('/post/$postId');
   }
 
   void onCreatorTap(String creatorUrl) {

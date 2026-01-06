@@ -29,18 +29,22 @@ class UpdaterController {
     final response =
         await dio.get('https://floaty.fyi/api/latest-update?flavor=$flavor');
     final packageInfo = await PackageInfo.fromPlatform();
-    if (response.data['deployment']['version'] == packageInfo.version) {
+    if (response.data != null &&
+        response.data['deployment'] != null &&
+        response.data['deployment']['version'] == packageInfo.version) {
       return true;
     }
     return false;
   }
 
   Future<void> initialCheck() async {
+    print('$flavor');
     final response =
         await dio.get('https://floaty.fyi/api/latest-update?flavor=$flavor');
     final packageInfo = await PackageInfo.fromPlatform();
-
-    if (response.data['deployment']['version'] != packageInfo.version) {
+    if (response.data != null &&
+        response.data['deployment'] != null &&
+        response.data['deployment']['version'] != packageInfo.version) {
       updateReady = true;
       updateStream.add(true);
     }

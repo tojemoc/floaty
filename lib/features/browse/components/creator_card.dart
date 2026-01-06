@@ -37,7 +37,7 @@ class CreatorCardState extends State<CreatorCard> {
             borderRadius: BorderRadius.circular(14),
             child: InkWell(
               borderRadius: BorderRadius.circular(14),
-              onTap: () => context.go('/channel/${widget.creator.urlname}'),
+              onTap: () => context.push('/channel/${widget.creator.urlname}'),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -102,7 +102,7 @@ class CreatorCardState extends State<CreatorCard> {
                           onTap: () => widget.creator.featuredBlogPosts!.first
                                       .isAccessible ==
                                   true
-                              ? context.go(
+                              ? context.push(
                                   '/post/${widget.creator.featuredBlogPosts!.first.id}')
                               : context
                                   .go('/channel/${widget.creator.urlname}'),

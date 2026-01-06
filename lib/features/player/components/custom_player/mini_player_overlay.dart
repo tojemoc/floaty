@@ -192,17 +192,17 @@ class MiniPlayerOverlay extends ConsumerWidget {
       // Check if we're already on the target post/live page
       if (!currentPath.contains(postId)) {
         if (live) {
-          context.go('/live/$postId');
+          context.push('/live/$postId');
         } else if (mediaService.isOffline) {
           // For offline videos, pass the offline data as extras
-          context.go('/post/$postId', extra: {
+          context.push('/post/$postId', extra: {
             'isOffline': true,
             'offlinePost': mediaService.offlinePost,
             'offlineAttachmentId': mediaService.offlineAttachmentId,
             'offlineFilePath': mediaService.offlineFilePath,
           });
         } else {
-          context.go('/post/$postId');
+          context.push('/post/$postId');
         }
       }
       // If already on the correct page, state change is enough - the page will rebuild

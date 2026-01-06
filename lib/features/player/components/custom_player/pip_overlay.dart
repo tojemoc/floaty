@@ -96,9 +96,9 @@ class _DesktopPipOverlayState extends ConsumerState<DesktopPipOverlay> {
       if (!currentPath.startsWith(targetPath.split('/').take(2).join('/')) ||
           !currentPath.contains(widget.postId)) {
         if (widget.live) {
-          context.go('/live/${widget.postId}');
+          context.push('/live/${widget.postId}');
         } else {
-          context.go('/post/${widget.postId}');
+          context.push('/post/${widget.postId}');
         }
       }
     }

@@ -160,7 +160,7 @@ class ChannelScreenStateWrapperState
       channelScreenProvider.select((state) => state.selectedIndex),
       (previous, next) {
         if (next == 2 && context.mounted) {
-          context.go('/live/${widget.channelName}');
+          context.push('/live/${widget.channelName}');
           ref.read(channelScreenProvider.notifier).resetSelectedIndex();
         }
       },

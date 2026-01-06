@@ -266,7 +266,9 @@ final GoRouter routerController = GoRouter(
     }
     final data = await updatercontroller.getUpdate();
     final packageInfo = await PackageInfo.fromPlatform();
-    if (data['deployment']['version'] != packageInfo.version) {
+    if (data != null &&
+        data['deployment'] != null &&
+        data['deployment']['version'] != packageInfo.version) {
       if (data['deployment']['required'] == 1) {
         routerController.go('/update');
       }

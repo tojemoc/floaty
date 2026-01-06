@@ -1,28 +1,28 @@
 {
-    "project_info": {
-      "project_number": "430361853609",
-      "project_id": "floaty-notif-test"
-    },
-    "client": [
-      {
-        "client_info": {
-          "mobilesdk_app_id": "1:430361853609:android:d92021ba319938ea83b3b8",
-          "android_client_info": {
-            "package_name": "uk.bw86.floaty.dev"
-          }
-        },
-        "oauth_client": [],
-        "api_key": [
-          {
-            "current_key": "AIzaSyBIKRtWt3dwPSku43xTjMZ5I9arp7Hm7zs"
-          }
-        ],
-        "services": {
-          "appinvite_service": {
-            "other_platform_oauth_client": []
-          }
+  "project_info": {
+    "project_number": "430361853609",
+    "project_id": "floaty-notif-test"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:430361853609:android:d92021ba319938ea83b3b8",
+        "android_client_info": {
+          "package_name": "uk.bw86.floaty.dev.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIKRtWt3dwPSku43xTjMZ5I9arp7Hm7zs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
         }
       }
-    ],
-    "configuration_version": "1"
-  }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -58,7 +58,7 @@ class BlogPostCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () => blogPost.isAccessible == true
-            ? context.go('/post/${blogPost.id}')
+            ? context.push('/post/${blogPost.id}')
             : null,
         child: LayoutBuilder(
           builder: (context, constraints) {
