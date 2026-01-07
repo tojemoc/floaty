@@ -674,28 +674,33 @@ class FPApiRequests {
       String whitelabel, String commentId, String blogPostId) async {
     final response = await postData('v3/comment/like', whitelabel,
         {'comment': commentId, 'blogPost': blogPostId});
-    final decodedres = jsonDecode(response);
-    if (decodedres.contains('like')) {
-      return 'success';
-    } else if (response.toString() == '[]') {
+    if (response.isEmpty || response.toString() == '[]' || response == 'null') {
       return 'removed';
-    } else {
-      return 'fail';
     }
+
+    final decodedres = jsonDecode(response);
+    if (decodedres != null && decodedres.toString().contains('dislike')) {
+      return 'success';
+    }
+
+    return 'fail';
   }
 
   Future<String> dislikeComment(
       String whitelabel, String commentId, String blogPostId) async {
     final response = await postData('v3/comment/dislike', whitelabel,
         {'comment': commentId, 'blogPost': blogPostId});
-    final decodedres = jsonDecode(response);
-    if (decodedres.contains('dislike')) {
-      return 'success';
-    } else if (response.toString() == '[]') {
+
+    if (response.isEmpty || response.toString() == '[]' || response == 'null') {
       return 'removed';
-    } else {
-      return 'fail';
     }
+
+    final decodedres = jsonDecode(response);
+    if (decodedres != null && decodedres.toString().contains('like')) {
+      return 'success';
+    }
+
+    return 'fail';
   }
 
   Future<List<BlogPostModelV3>> getRecommended(

@@ -49,6 +49,7 @@ class _CommentItemState extends ConsumerState<CommentItem> {
     _commentText = widget.comment.text;
     _editController = TextEditingController(text: _commentText);
     _likeCount = widget.comment.likes;
+    _dislikeCount = widget.comment.dislikes;
     _replyController.addListener(_updateCharCount);
   }
 
