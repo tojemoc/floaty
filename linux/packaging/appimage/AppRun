@@ -3,7 +3,7 @@
 set -u
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SATURN_BIN="${APPDIR}/Saturn"
+FLOATY_BIN="${APPDIR}/floaty"
 
 export LD_LIBRARY_PATH="${APPDIR}/lib:${APPDIR}/lib64"
 
@@ -29,12 +29,12 @@ if [ -n "${LD_LIBRARY_PATH:-}" ]; then
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}"
 fi
 
-if [ -x "$SATURN_BIN" ]; then
+if [ -x "$FLOATY_BIN" ]; then
     # check if AOT library exists and is readable
     if [ -f "${APPDIR}/lib/libapp.so" ]; then
         export FLUTTER_AOT_LIBRARY="${APPDIR}/lib/libapp.so"
     fi
-    exec "$SATURN_BIN" "$@"
+    exec "$FLOATY_BIN" "$@"
 fi
 
 # all common locations for the x86-64 dynamic linker
@@ -48,17 +48,17 @@ DYNAMIC_LINKERS=(
 
 for ld_path in "${DYNAMIC_LINKERS[@]}"; do
     if [ -f "$ld_path" ]; then
-        exec "$ld_path" --library-path "${LD_LIBRARY_PATH}" "$SATURN_BIN" "$@"
+        exec "$ld_path" --library-path "${LD_LIBRARY_PATH}" "$FLOATY_BIN" "$@"
     fi
 done
 
 # GG
-echo "Error: Failed to start Saturn" >&2
+echo "Error: Failed to start Floaty" >&2
 echo "" >&2
 echo "Diagnostics:" >&2
-echo "  Saturn binary: $SATURN_BIN" >&2
-echo "  Binary exists: $([ -f "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
-echo "  Binary executable: $([ -x "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  Floaty binary: $FLOATY_BIN" >&2
+echo "  Binary exists: $([ -f "$FLOATY_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  Binary executable: $([ -x "$FLOATY_BIN" ] && echo "yes" || echo "no")" >&2
 echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH}" >&2
 echo "" >&2
 echo "To fix this, ensure the following packages are installed:" >&2

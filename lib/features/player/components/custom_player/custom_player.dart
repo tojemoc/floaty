@@ -6,6 +6,7 @@ import 'package:floaty/features/player/components/custom_player/fullscreen_playe
 import 'package:floaty/features/player/components/custom_player/pip_overlay.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
 import 'package:floaty/features/player/models/video_quality.dart';
+import 'package:floaty/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -156,6 +157,7 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
   bool _volumeDragging = false;
   bool _buffering = false;
   double _playbackSpeed = 1.0;
+  bool _incrementPlaybackSpeed = false;
   late final AnimationController _animationController;
   Timer? _hideControlsTimer;
   late final MediaPlayerService mediaService;
@@ -256,7 +258,15 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
     _buffering = mediaService.buffering;
 
     _setupPlayerListeners();
-    _initBrightnessAndVolume();
+
+    // Perform async initialization without making initState async.
+    _asyncInit();
+  }
+
+  Future<void> _asyncInit() async {
+    _incrementPlaybackSpeed =
+        await settings.getBool('increment_playback_speed');
+    await _initBrightnessAndVolume();
   }
 
   Future<void> _initBrightnessAndVolume() async {
@@ -1535,9 +1545,9 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
             child: Center(
               child: Slider(
                 value: _playbackSpeed,
-                min: 0.25,
+                min: _incrementPlaybackSpeed ? 0.3 : 0.25,
                 max: 4.0,
-                divisions: 15,
+                divisions: _incrementPlaybackSpeed ? 37 : 15,
                 label: '${_playbackSpeed.toStringAsFixed(2)}x',
                 onChanged: (value) {
                   setState(() => _playbackSpeed = value);
@@ -1570,9 +1580,9 @@ class _CustomPlayerState extends ConsumerState<CustomPlayer>
             child: Center(
               child: Slider(
                 value: _playbackSpeed,
-                min: 0.25,
+                min: _incrementPlaybackSpeed ? 0.3 : 0.25,
                 max: 4.0,
-                divisions: 15,
+                divisions: _incrementPlaybackSpeed ? 37 : 15,
                 label: '${_playbackSpeed.toStringAsFixed(2)}x',
                 onChanged: (value) {
                   if (setModalState != null) {

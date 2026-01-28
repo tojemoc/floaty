@@ -90,6 +90,11 @@ class WhenPlaneIntegration {
     return res;
   }
 
+  Future<String> alternateStartTimes() async {
+    String res = await fetchData('alternateStartTimes');
+    return res;
+  }
+
   Stream<String> streamWebsocket() async* {
     try {
       final socket = WebSocket(
@@ -117,8 +122,18 @@ class WhenPlaneIntegration {
     return a.isBefore(b);
   }
 
-  DateTime getNextWAN(DateTime now, {bool buffer = true, bool? hasDone}) {
-    DateTime wanDate = getLooseWAN(now);
+  DateTime getNextWAN(DateTime now,
+      {bool buffer = true,
+      List<Map<String, dynamic>>? alternateTimes,
+      bool? hasDone}) {
+    DateTime adjustedNow = now;
+    // Adjust 'now' for loose wan for LTX (2023-07-29)
+    if (adjustedNow.year == 2023 &&
+        adjustedNow.month == 7 &&
+        adjustedNow.day == 29) {
+      adjustedNow = adjustedNow.subtract(Duration(days: 1));
+    }
+    DateTime wanDate = getLooseWAN(adjustedNow);
 
     while (wanDate.weekday != DateTime.friday) {
       wanDate = wanDate.add(Duration(days: 1));
@@ -128,10 +143,11 @@ class WhenPlaneIntegration {
     if (buffer) {
       if (hasDone != null) {
         shouldStay = !hasDone;
-        // print('hasDone: $hasDone, shouldStay: $shouldStay');
       } else {
-        shouldStay = now.isAfter(wanDate.add(Duration(hours: 5))) &&
-            now.isBefore(wanDate.add(Duration(hours: 6)));
+        // JS: shouldStay = now.getTime() - wanDate.toJSDate().getTime() > 5 * 60 * 60 * 1e3;
+        shouldStay =
+            now.millisecondsSinceEpoch - wanDate.millisecondsSinceEpoch >
+                5 * 60 * 60 * 1000;
       }
     } else {
       shouldStay = false;
@@ -141,37 +157,43 @@ class WhenPlaneIntegration {
       wanDate = wanDate.add(Duration(days: 7));
     }
 
-    if (wanDate.isAfter(now.add(Duration(days: 6)))) {
-      if (shouldStay) {
-        wanDate = wanDate.subtract(Duration(days: 7));
-      }
+    // prevent counting down til next wan if current wan hasn't come yet
+    if (wanDate.millisecondsSinceEpoch - now.millisecondsSinceEpoch >
+            6 * 24 * 60 * 60 * 1000 &&
+        shouldStay) {
+      wanDate = wanDate.subtract(Duration(days: 7));
     }
 
-    if (hasDone != null && wanDate.isBefore(now.add(Duration(days: 1)))) {
+    // If the show ends before the normal time, go ahead and skip over it
+    if (hasDone == true &&
+        wanDate.millisecondsSinceEpoch - now.millisecondsSinceEpoch <
+            24 * 60 * 60 * 1000) {
       wanDate = wanDate.add(Duration(days: 7));
     }
 
-    if (wanDate.year == 2023 && wanDate.month == 7 && wanDate.day == 28 ||
-        wanDate.year == 2019 && wanDate.month == 7 && wanDate.day == 26) {
-      wanDate = wanDate.add(Duration(days: 1));
+    // Apply alternateTimes adjustments
+    if (alternateTimes != null) {
+      String dateString =
+          "${wanDate.year}/${addZero(wanDate.month)}/${addZero(wanDate.day)}";
+      Map<String, dynamic> adjustment = alternateTimes.firstWhere(
+        (t) => t['date'] == dateString,
+        orElse: () => {},
+      );
+      if (adjustment.isNotEmpty) {
+        if (adjustment['days'] != null) {
+          wanDate = wanDate.add(Duration(days: adjustment['days']));
+        }
+        wanDate = DateTime(
+          wanDate.year,
+          wanDate.month,
+          wanDate.day,
+          adjustment['hour'] ?? wanDate.hour,
+          adjustment['minute'] ?? wanDate.minute,
+        );
+      }
     }
 
-    if (wanDate.year == 2024 && wanDate.month == 4 && wanDate.day == 26) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 13, 0);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 12 && wanDate.day == 27) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 15, 0);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 11 && wanDate.day == 22) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 8, 30);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 6 && wanDate.day == 21) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 10, 0);
-    }
-
+    // 7/18/2023 skipped due to production shutdown (from GN callout)
     if (wanDate.year == 2023 && wanDate.month == 8 && wanDate.day == 18) {
       wanDate = wanDate.add(Duration(days: 7));
     }
@@ -180,9 +202,9 @@ class WhenPlaneIntegration {
   }
 
   DateTime getLooseWAN(DateTime now) {
-    int year = now.year;
-    int month = now.month;
-    int day = now.hour <= 3 ? now.day - 1 : now.day;
+    int year = now.toUtc().year;
+    int month = now.toUtc().month;
+    int day = now.toUtc().hour <= 3 ? now.toUtc().day - 1 : now.toUtc().day;
 
     if (day <= 0) {
       month -= 1;
@@ -271,49 +293,60 @@ class WhenPlaneIntegration {
     return "$hoursS$minutesS$and$secondsS";
   }
 
-  DateTime getPreviousWAN(DateTime now) {
+  DateTime getPreviousWAN(DateTime now,
+      {List<Map<String, dynamic>>? alternateTimes}) {
     DateTime wanDate = getLooseWAN(now);
 
     while (wanDate.weekday != DateTime.friday) {
       wanDate = wanDate.subtract(Duration(days: 1));
     }
 
-    if (wanDate.year == 2024 && wanDate.month == 4 && wanDate.day == 26) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 13, 0);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 12 && wanDate.day == 27) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 15, 0);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 11 && wanDate.day == 22) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 8, 30);
-    }
-
-    if (wanDate.year == 2024 && wanDate.month == 6 && wanDate.day == 21) {
-      wanDate = DateTime(wanDate.year, wanDate.month, wanDate.day, 10, 0);
-    }
-
     if (isBefore(now, wanDate)) {
       wanDate = wanDate.subtract(Duration(days: 7));
     }
 
-    if (wanDate.year == 2023 && wanDate.month == 7 && wanDate.day == 28 ||
-        wanDate.year == 2019 && wanDate.month == 7 && wanDate.day == 26) {
-      wanDate = wanDate.add(Duration(days: 1));
+    // Apply alternateTimes adjustments
+    if (alternateTimes != null) {
+      String dateString =
+          "${wanDate.year}/${addZero(wanDate.month)}/${addZero(wanDate.day)}";
+      Map<String, dynamic> adjustment = alternateTimes.firstWhere(
+        (t) => t['date'] == dateString,
+        orElse: () => {},
+      );
+      if (adjustment.isNotEmpty) {
+        if (adjustment['days'] != null) {
+          wanDate = wanDate.add(Duration(days: adjustment['days']));
+        }
+        wanDate = DateTime(
+          wanDate.year,
+          wanDate.month,
+          wanDate.day,
+          adjustment['hour'] ?? wanDate.hour,
+          adjustment['minute'] ?? wanDate.minute,
+        );
+      }
+    }
+
+    // 7/18/2023 skipped due to production shutdown (from GN callout)
+    if (wanDate.year == 2023 && wanDate.month == 8 && wanDate.day == 18) {
+      wanDate = wanDate.subtract(Duration(days: 7));
     }
 
     return wanDate;
   }
 
-  DateTime getClosestWan(DateTime now) {
-    DateTime next = getNextWAN(now, buffer: false);
-    DateTime previous = getPreviousWAN(now);
+  DateTime getClosestWan(DateTime now,
+      {List<Map<String, dynamic>>? alternateTimes}) {
+    DateTime next =
+        getNextWAN(now, buffer: false, alternateTimes: alternateTimes);
+    DateTime previous = getPreviousWAN(now, alternateTimes: alternateTimes);
 
-    int distanceToNext = next.difference(now).inMilliseconds.abs();
-    int distanceToPrevious = now.difference(previous).inMilliseconds.abs();
+    int distanceToNext =
+        (next.millisecondsSinceEpoch - now.millisecondsSinceEpoch).abs();
+    int distanceToPrevious =
+        (previous.millisecondsSinceEpoch - now.millisecondsSinceEpoch).abs();
 
-    return distanceToNext < distanceToPrevious ? next : previous;
+    return distanceToNext > distanceToPrevious ? previous : next;
   }
 
   Map<String, dynamic> getNearestWan([DateTime? now]) {

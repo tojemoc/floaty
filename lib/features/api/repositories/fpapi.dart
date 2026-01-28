@@ -679,7 +679,7 @@ class FPApiRequests {
     }
 
     final decodedres = jsonDecode(response);
-    if (decodedres != null && decodedres.toString().contains('dislike')) {
+    if (decodedres != null && decodedres.toString().contains('like')) {
       return 'success';
     }
 
@@ -696,7 +696,7 @@ class FPApiRequests {
     }
 
     final decodedres = jsonDecode(response);
-    if (decodedres != null && decodedres.toString().contains('like')) {
+    if (decodedres != null && decodedres.toString().contains('dislike')) {
       return 'success';
     }
 

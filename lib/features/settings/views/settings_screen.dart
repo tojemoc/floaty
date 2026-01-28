@@ -1159,6 +1159,10 @@ class _PlayerSettingsScreenState extends State<PlayerSettingsScreen> {
                 title: 'Pause upon entering background',
                 settingkey: 'pause_on_background',
               ),
+              const ToggleSetting(
+                title: 'Increment playback speed by 0.1x',
+                settingkey: 'increment_playback_speed',
+              ),
               if (!Platform.isAndroid && !Platform.isIOS)
                 const ToggleSetting(
                   title: 'Discord RPC',
@@ -1345,6 +1349,12 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                     title: 'Old UI components from old Floatplane design.',
                     settingkey: 'legacy_ui',
                   ),
+                  //TODO: put back
+                  // const ToggleSetting(
+                  //   title: 'Bottom Navigation on small screens.',
+                  //   settingkey: 'bottom_navigation',
+                  //   defaultvalue: true,
+                  // ),
                 ],
               );
             },

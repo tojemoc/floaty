@@ -59,6 +59,10 @@ void main() async {
     LogService.addLog(logMessage);
   });
   await Hive.openBox('settings');
+  // Register Settings early so services/listeners started above can access it
+  getIt.registerSingleton<Settings>(
+    Settings(),
+  );
   const flavor =
       String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
 
@@ -113,10 +117,6 @@ void main() async {
   final packageInfo = await PackageInfo.fromPlatform();
   final userAgent =
       'Floaty/${packageInfo.version} (${packageInfo.buildNumber})';
-
-  getIt.registerSingleton<Settings>(
-    Settings(),
-  );
 
   getIt.registerSingleton<Whitelabels>(
     Whitelabels(),

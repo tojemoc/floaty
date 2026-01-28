@@ -8,11 +8,13 @@ import 'package:floaty/shared/components/switcher.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/shared/controllers/root_provider.dart';
 import 'package:floaty/features/player/components/custom_player/mini_player_overlay.dart';
 import 'package:floaty/features/player/controllers/media_player_service.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 // No router import here — RootLayout is a plain shell widget.
 
 // RootLayout is a plain shell widget. A single global key is used so
@@ -36,6 +38,7 @@ class RootLayoutState extends ConsumerState<RootLayout>
   bool? _lastSidebarCollapsed;
   bool _textGuardInitialized = false;
   bool updateReady = updatercontroller.updateReady;
+  int _selectedIndex = 0;
   @override
   void initState() {
     super.initState();
@@ -81,6 +84,12 @@ class RootLayoutState extends ConsumerState<RootLayout>
     final screenWidth = MediaQuery.of(context).size.width;
     isSmallScreen = screenWidth < 600;
     bool subed = false;
+    final settingsBox = Hive.box('settings');
+    //TODO: put back
+    final bottomNavEnabled = false;
+    // final bottomNavEnabled =
+    //     settingsBox.get('bottom_navigation', defaultValue: true) as bool;
+    final useBottomNav = isSmallScreen && bottomNavEnabled;
 
     final isSidebarCollapsed = isSmallScreen ? false : rootState.isCollapsed;
 
@@ -288,24 +297,54 @@ class RootLayoutState extends ConsumerState<RootLayout>
         surfaceTintColor: colorScheme.surfaceContainer,
         title: rootState.appBarTitle,
         actions: rootState.appBarActions,
-        leading: rootState.appBarLeading ??
-            (isSmallScreen
-                ? IconButton(
-                    icon: const Icon(Icons.menu),
-                    onPressed: () {
-                      scaffoldKey.currentState?.openDrawer();
-                    },
-                  )
-                : (Navigator.of(context).canPop()
-                    ? IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      )
-                    : null)),
+        leading: (() {
+          if (rootState.appBarLeading != null) return rootState.appBarLeading;
+          if (isSmallScreen) {
+            // On small screens:
+            // - If bottom nav is NOT enabled, show the menu button.
+            // - If bottom nav IS enabled, show a back button except on root routes.
+            if (!useBottomNav) {
+              return IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  scaffoldKey.currentState?.openDrawer();
+                },
+              );
+            }
+
+            final currentPath = GoRouter.of(context).state.uri.path;
+            const rootRoutes = [
+              '/home',
+              '/browse',
+              '/history',
+              '/offline',
+              '/more'
+            ];
+            final isRootRoute =
+                rootRoutes.any((r) => currentPath.startsWith(r));
+            if (isRootRoute) return null;
+            return IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                if (GoRouter.of(context).canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/home');
+                }
+              },
+            );
+          }
+          return Navigator.of(context).canPop()
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                )
+              : null;
+        }()),
       ),
-      drawer: isSmallScreen ? sidebar : null,
+      drawer: (isSmallScreen && !useBottomNav) ? sidebar : null,
       body: SafeArea(
         child: Row(
           children: [
@@ -330,6 +369,41 @@ class RootLayoutState extends ConsumerState<RootLayout>
           ],
         ),
       ),
+      bottomNavigationBar: useBottomNav
+          ? NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (idx) {
+                String route = '/home';
+                switch (idx) {
+                  case 0:
+                    route = '/home';
+                    break;
+                  case 1:
+                    route = '/history';
+                    break;
+                  case 2:
+                    route = '/browse';
+                    break;
+                  case 3:
+                    route = '/more';
+                    break;
+                }
+                setState(() {
+                  _selectedIndex = idx;
+                });
+                context.go(route);
+              },
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                NavigationDestination(
+                    icon: Icon(Icons.history), label: 'History'),
+                NavigationDestination(
+                    icon: Icon(Icons.view_carousel), label: 'Browse'),
+                NavigationDestination(
+                    icon: Icon(Icons.more_horiz), label: 'More'),
+              ],
+            )
+          : null,
     );
   }
 }

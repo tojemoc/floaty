@@ -298,7 +298,7 @@ final GoRouter routerController = GoRouter(
         return null;
       } else {
         // User has never authenticated and is offline - they can only access offline routes
-        final isOfflineRoute = currentPath == '/offline-library' ||
+        final isOfflineRoute = currentPath == '/offline' ||
             (currentPath.startsWith('/post/') &&
                 state.extra is Map &&
                 (state.extra as Map)['isOffline'] == true);
@@ -308,7 +308,7 @@ final GoRouter routerController = GoRouter(
         }
 
         // Redirect to offline library since they can't login anyway
-        return '/offline-library';
+        return '/offline';
       }
     }
 
@@ -331,7 +331,7 @@ final GoRouter routerController = GoRouter(
       // Allow them to stay in the app but redirect to offline library
       // unless they're already on a safe route
 
-      final isOfflineRoute = currentPath == '/offline-library' ||
+      final isOfflineRoute = currentPath == '/offline' ||
           (currentPath.startsWith('/post/') &&
               state.extra is Map &&
               (state.extra as Map)['isOffline'] == true);
@@ -346,7 +346,7 @@ final GoRouter routerController = GoRouter(
         // This way they can still watch their downloaded videos
         debugPrint(
             'Session expired but user has offline access - redirecting to offline library');
-        return '/offline-library';
+        return '/offline';
       }
 
       // Already on a safe route, let them stay
@@ -354,7 +354,7 @@ final GoRouter routerController = GoRouter(
     }
 
     // Allow access to offline content routes even without any authentication
-    final isOfflineRoute = currentPath == '/offline-library' ||
+    final isOfflineRoute = currentPath == '/offline' ||
         (currentPath.startsWith('/post/') &&
             state.extra is Map &&
             (state.extra as Map)['isOffline'] == true);

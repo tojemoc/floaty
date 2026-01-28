@@ -119,12 +119,21 @@ class FPDownloadService {
       const linuxSettings = LinuxInitializationSettings(
         defaultActionName: 'Open notification',
       );
+      // Provide Windows initialization settings when running on Windows
+      final windowsSettings = Platform.isWindows
+          ? WindowsInitializationSettings(
+              appName: 'Floaty',
+              appUserModelId: 'uk.bw86.floaty',
+              guid: 'd2f7b3e5-1c7a-4b0a-8c2f-3e8b9d1a2b3c',
+            )
+          : null;
 
       final initSettings = InitializationSettings(
         android: androidSettings,
         iOS: iosSettings,
         macOS: macosSettings,
         linux: linuxSettings,
+        windows: windowsSettings,
       );
 
       await _notificationsPlugin.initialize(initSettings);

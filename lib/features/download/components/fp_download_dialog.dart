@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:floaty/features/api/models/definitions.dart';
 import 'package:floaty/features/download/repositories/fp_download_provider.dart';

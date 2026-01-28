@@ -1120,9 +1120,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         GestureDetector(
           onTap: () {
             if (post.creator?.urlname == post.channel?.urlname) {
-              context.go('/channel/${post.creator?.urlname}');
+              context.push('/channel/${post.creator?.urlname}');
             } else {
-              context.go(
+              context.push(
                   '/channel/${post.creator?.urlname}/${post.channel?.urlname}');
             }
           },
@@ -1478,10 +1478,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                                 splashFactory: InkRipple.splashFactory,
                                 overlayColor: Colors.grey[800],
                               ),
-                              child: const Text(
+                              child: Text(
                                 'CANCEL',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
+                                  color: theme.textTheme.bodyMedium?.color,
                                 ),
                               ),
                             ),
@@ -1515,7 +1516,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                                 style: TextStyle(
                                   color: _currentLength >= 3 &&
                                           _currentLength <= 4500
-                                      ? Colors.white
+                                      ? colorScheme.primary
                                       : Colors.grey[600],
                                   fontWeight: FontWeight.bold,
                                 ),

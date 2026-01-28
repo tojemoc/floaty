@@ -38,7 +38,6 @@ class UpdaterController {
   }
 
   Future<void> initialCheck() async {
-    print('$flavor');
     final response =
         await dio.get('https://floaty.fyi/api/latest-update?flavor=$flavor');
     final packageInfo = await PackageInfo.fromPlatform();

@@ -29,6 +29,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   String phrase = whenPlaneIntegration.newPhrase();
   late String jsonData;
   String? latenessData;
+  List<Map<String, dynamic>>? alternatestarts;
   bool isLoading = true;
 
   bool votingrevealed = true;
@@ -45,6 +46,12 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   ];
   late int totalVotes;
 
+  // Example alternateTimes, should be fetched or constructed from your API/data
+  Future<List<Map<String, dynamic>>> getAlternateTimes() async {
+    String res = await whenPlaneIntegration.alternateStartTimes();
+    return List<Map<String, dynamic>>.from(jsonDecode(res));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +67,10 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
   void initFetch() async {
     jsonData = await whenPlaneIntegration.aggregate();
     latenessData = await whenPlaneIntegration.lateness();
+    alternatestarts = await getAlternateTimes();
+    nextWan = whenPlaneIntegration.getNextWAN(DateTime.now(),
+        hasDone: jsonDecode(jsonData)['hasDone'],
+        alternateTimes: alternatestarts);
     if (jsonData is Map ||
         latenessData is Map ||
         jsonDecode(jsonData)['error'] != null ||
@@ -206,7 +217,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
         if (showPlayed) {
           showPlayed = false;
           nextWan = whenPlaneIntegration.getNextWAN(DateTime.now(),
-              hasDone: pjsonData['hasDone']);
+              hasDone: pjsonData['hasDone'], alternateTimes: alternatestarts);
         }
 
         final timeUntil = whenPlaneIntegration.getTimeUntil(nextWan);
@@ -597,7 +608,7 @@ class _WhenplaneScreenState extends State<WhenplaneScreen> {
             ),
             if (!isLate && !isMainShow) ...[
               Text(
-                'Next WAN: ${DateFormat('MM/dd/yyyy HH:mm:ss').format(whenPlaneIntegration.getNextWAN(DateTime.now()).toLocal())}',
+                'Next WAN: ${DateFormat('MM/dd/yyyy HH:mm:ss').format(whenPlaneIntegration.getNextWAN(DateTime.now(), alternateTimes: alternatestarts).toLocal())}',
                 style: textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
