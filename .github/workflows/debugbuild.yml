@@ -239,6 +239,7 @@ jobs:
           MANIFEST_URL="${PAGES_URL}/manifest.plist"
           INSTALL_URL="itms-services://?action=download-manifest&url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${MANIFEST_URL}', safe=''))")"
           INSTALL_URL_HTML="${INSTALL_URL//&/&amp;}"
+          INSTALL_URL_SED="${INSTALL_URL_HTML//&/\\&}"
 
           cp docs/manifest.plist.template docs/manifest.plist
           sed -i "s|__IPA_URL__|${IPA_URL}|g" docs/manifest.plist
@@ -246,7 +247,7 @@ jobs:
 
           cp docs/index.html.template docs/index.html
           sed -i "s|__VERSION__|${VERSION_NAME}|g" docs/index.html
-          sed -i "s|__INSTALL_URL__|${INSTALL_URL_HTML}|g" docs/index.html
+          sed -i "s|__INSTALL_URL__|${INSTALL_URL_SED}|g" docs/index.html
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
