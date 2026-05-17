@@ -88,7 +88,7 @@ You can build the app in either release or debug mode. If you're building it in 
 
 ## iOS Over-the-Air (OTA) install for testers
 
-CI builds an IPA on each successful deploy and publishes OTA install files under `docs/` for GitHub Pages.
+CI builds an IPA on each successful deploy and publishes OTA install files under `docs/` for GitHub Pages. Source templates live in `docs/*.template`; CI generates `manifest.plist` and `index.html` with real release URLs and build numbers (never commit the template placeholders into the served files).
 
 ### One-time setup (repo maintainer)
 
