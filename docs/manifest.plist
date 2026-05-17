@@ -20,7 +20,7 @@
         <key>bundle-identifier</key>
         <string>uk.bw86.floaty</string>
         <key>bundle-version</key>
-        <string>__VERSION__</string>
+        <string>__BUILD_NUMBER__</string>
         <key>kind</key>
         <string>software</string>
         <key>title</key>
