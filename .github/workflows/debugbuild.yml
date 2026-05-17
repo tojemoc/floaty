@@ -5,69 +5,79 @@ on:
     branches:
       - "**"
 
-# Add explicit permissions for the workflow
 permissions:
-  contents: write  # Required for creating releases
-  actions: read    # Required for downloading artifacts
-
-env:
-  DEPLOYMENT_API_KEY: ${{ secrets.DEPLOYMENT_API_KEY }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  contents: write
+  actions: read
 
 jobs:
   VERSION_BUMP:
     name: Bump Version
     runs-on: ubuntu-latest
+    outputs:
+      skip_bump: ${{ steps.check_skip.outputs.skip }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Check if version bump should be skipped
         id: check_skip
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%B)
           echo "Commit message: $COMMIT_MSG"
-          if [[ "$COMMIT_MSG" == *"--no-bump"* ]]; then
+          if [[ "$COMMIT_MSG" == *"--no-bump"* ]] || [[ "$COMMIT_MSG" == *"[skip ci]"* ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Skipping version bump"
           else
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "Proceeding with version bump"
           fi
-      
+
       - name: Bump version
         if: steps.check_skip.outputs.skip != 'true'
         run: |
-          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
-          echo "Current version: $CURRENT_VERSION"
-          
-          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          set -euo pipefail
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' \r')
+          echo "Current version line: $RAW"
+
+          if [[ "$RAW" == *"+"* ]]; then
+            NAME="${RAW%%+*}"
+            BUILD="${RAW#*+}"
+          else
+            NAME="$RAW"
+            # Legacy lines without +build: derive an integer build from patch.
+            BUILD="${NAME##*.}"
+          fi
+
+          IFS='.' read -r major minor patch <<< "$NAME"
           NEW_PATCH=$((patch + 1))
-          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          NEW_NAME="$major.$minor.$NEW_PATCH"
+          NEW_BUILD=$((BUILD + 1))
+
+          NEW_VERSION="${NEW_NAME}+${NEW_BUILD}"
           echo "New version: $NEW_VERSION"
-          
           sed -i "s/^version: .*/version: $NEW_VERSION/" pubspec.yaml
-          
-          echo "Updated pubspec.yaml:"
           grep '^version:' pubspec.yaml
-      
+
       - name: Commit version bump
         if: steps.check_skip.outputs.skip != 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: Automated Version Bump
-          push_options: '--force'
-          skip_dirty_check: true
+          commit_message: "chore: automated version bump [skip ci]"
+          push_options: "--force"
 
-  MACOSIOS:
-    name: MacOS & iOS
+  IOS:
+    name: iOS IPA
     runs-on: macos-latest
     needs: VERSION_BUMP
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Pull version bump commit
+        if: needs.VERSION_BUMP.outputs.skip_bump != 'true'
+        run: git pull --ff-only origin "${{ github.ref_name }}"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -75,26 +85,8 @@ jobs:
           flutter-version: "3.38.4"
           cache: true
 
-      - name: Install appdmg
-        run: npm install -g appdmg
-
       - name: Install Flutter dependencies
         run: flutter pub get
-
-      - name: Prepare make_config.yaml
-        run: |
-          OS=macos
-          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
-            target_dir=$(dirname "$config_file")
-            cp "$config_file" "${target_dir}/make_config.yaml"
-            echo "Copied $config_file → ${target_dir}/make_config.yaml"
-          done
-
-      - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
-      - name: Build and release
-        run: fastforge release --name ${{ github.ref_name }}macos
 
       - name: Determine iOS flavor
         id: ios_flavor
@@ -114,173 +106,142 @@ jobs:
           echo "flavor=$FLAVOR" >> $GITHUB_OUTPUT
           echo "Building iOS with flavor: $FLAVOR"
 
-      - name: Build iOS app
-        run: flutter build ios --release --no-codesign --flavor ${{ steps.ios_flavor.outputs.flavor }} --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
-
-      - name: Get version from pubspec.yaml
-        id: get_version
+      - name: Parse version from pubspec.yaml
+        id: version
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+          set -euo pipefail
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' \r')
+          if [[ "$RAW" != *"+"* ]]; then
+            echo "::error::pubspec version must use NAME+BUILD format (e.g. 0.0.10+10). Found: $RAW"
+            exit 1
+          fi
+          VERSION_NAME="${RAW%%+*}"
+          BUILD_NUMBER="${RAW#*+}"
+          if ! [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::iOS build number must be a positive integer. Found: $BUILD_NUMBER"
+            exit 1
+          fi
+          echo "raw=$RAW" >> $GITHUB_OUTPUT
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Version name: $VERSION_NAME, build: $BUILD_NUMBER"
+
+      - name: Build iOS app
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-name="${{ steps.version.outputs.name }}" \
+            --build-number="${{ steps.version.outputs.build }}" \
+            --flavor ${{ steps.ios_flavor.outputs.flavor }} \
+            --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
 
       - name: Package iOS IPA
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
-          mkdir -p "dist/$VERSION"
+          VERSION_NAME="${{ steps.version.outputs.name }}"
+          mkdir -p "dist/$VERSION_NAME"
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          cd dist/$VERSION
-          zip -r "floaty-${VERSION}-ios.ipa" ../../Payload
-          cd ../..
+          (
+            cd "dist/$VERSION_NAME"
+            zip -r "floaty-${VERSION_NAME}-ios.ipa" ../../Payload
+          )
           rm -rf Payload
-          echo "Packaged IPA:"
-          ls -la "dist/$VERSION/"
+          ls -la "dist/$VERSION_NAME/"
 
-      - name: Upload build artifacts
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist-macos-ios
+          name: ios-ipa
           path: dist/
 
-  DEPLOY:
-    name: Deploy Release
-    needs: [MACOSIOS]
+  RELEASE:
+    name: Publish IPA and OTA
+    needs: IOS
     runs-on: ubuntu-latest
-    if: always() && (needs.MACOSIOS.result == 'success')
+    if: needs.IOS.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set timestamp variable
-        id: timestamp
-        run: echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+      - name: Pull version bump commit
+        run: git pull --ff-only origin "${{ github.ref_name }}"
 
-      - name: Download all artifacts
+      - name: Parse version from pubspec.yaml
+        id: version
+        run: |
+          set -euo pipefail
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' \r')
+          VERSION_NAME="${RAW%%+*}"
+          BUILD_NUMBER="${RAW#*+}"
+          echo "raw=$RAW" >> $GITHUB_OUTPUT
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Determine release flavor label
+        id: flavor
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == "release" ]]; then
+            echo "label=release" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "beta" ]]; then
+            echo "label=beta" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "nightly" ]]; then
+            echo "label=nightly" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "dev" ]]; then
+            echo "label=development" >> $GITHUB_OUTPUT
+          else
+            echo "label=${BRANCH}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download IPA artifact
         uses: actions/download-artifact@v4
         with:
+          name: ios-ipa
           path: ./artifacts
 
-      - name: Organize build files
+      - name: Stage release files
         run: |
-          mkdir -p release/{macos,ios}
-          
-          if [ -d "./artifacts/dist-macos-ios" ]; then
-            find ./artifacts/dist-macos-ios -name "*.dmg" -exec cp {} release/macos/ \;
-            find ./artifacts/dist-macos-ios -name "*.pkg" -exec cp {} release/macos/ \;
-            find ./artifacts/dist-macos-ios -name "*.ipa" -exec cp {} release/ios/ \;
-          fi
-
-      - name: Generate deployment manifest
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' ' || echo "1.0.0")
-          FLAVOR="${{ github.ref_name }}"
-          
-          cat > release/manifest.json << EOF
-          {
-            "version": "$VERSION",
-            "flavor": "$FLAVOR",
-            "platforms": [
-          EOF
-          
-          if ls release/macos/*.dmg >/dev/null 2>&1 || ls release/macos/*.pkg >/dev/null 2>&1; then
-            echo '      {' >> release/manifest.json
-            echo '        "platform": "macos",' >> release/manifest.json
-            echo '        "files": [' >> release/manifest.json
-            
-            FIRST=true
-            for file in release/macos/*; do
-              if [ -f "$file" ]; then
-                [ "$FIRST" = false ] && echo ',' >> release/manifest.json
-                filename=$(basename "$file")
-                if [[ "$filename" == *.dmg ]]; then
-                  echo -n "          {\"type\": \"DMG\", \"path\": \"macos/$filename\"}" >> release/manifest.json
-                elif [[ "$filename" == *.pkg ]]; then
-                  echo -n "          {\"type\": \"PKG\", \"path\": \"macos/$filename\"}" >> release/manifest.json
-                fi
-                FIRST=false
-              fi
-            done
-            echo '' >> release/manifest.json
-            echo '        ]' >> release/manifest.json
-            echo '      },' >> release/manifest.json
-          fi
-          
-          if ls release/ios/*.ipa >/dev/null 2>&1; then
-            echo '      {' >> release/manifest.json
-            echo '        "platform": "ios",' >> release/manifest.json
-            echo '        "files": [' >> release/manifest.json
-            
-            FIRST=true
-            for file in release/ios/*; do
-              if [ -f "$file" ]; then
-                [ "$FIRST" = false ] && echo ',' >> release/manifest.json
-                filename=$(basename "$file")
-                echo -n "          {\"type\": \"IPA\", \"path\": \"ios/$filename\"}" >> release/manifest.json
-                FIRST=false
-              fi
-            done
-            echo '' >> release/manifest.json
-            echo '        ]' >> release/manifest.json
-            echo '      },' >> release/manifest.json
-          fi
-          
-          sed -i '$ s/,$//' release/manifest.json
-          echo '    ]' >> release/manifest.json
-          echo '  }' >> release/manifest.json
-
-      - name: Create deployment package
-        run: |
-          PACKAGE_NAME="floaty-release-${{ github.ref_name }}-${{ steps.timestamp.outputs.timestamp }}.zip"
-          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
-          cd release
-          zip -r "../$PACKAGE_NAME" .
-          cd ..
-          
-      - name: Display manifest content
-        run: cat release/manifest.json
+          mkdir -p release/ios
+          find ./artifacts -name "*.ipa" -exec cp {} release/ios/ \;
+          ls -la release/ios/
 
       - name: Create GitHub Release
-        if: steps.deploy.outputs.deployment_id != ''
+        id: release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "${{ steps.deploy.outputs.flavor }}-v${{ steps.deploy.outputs.version }}-${{ steps.deploy.outputs.deployment_id }}"
-          name: "${{ steps.deploy.outputs.flavor }} v${{ steps.deploy.outputs.version }}"
+          tag_name: "${{ steps.flavor.outputs.label }}-v${{ steps.version.outputs.name }}-build${{ steps.version.outputs.build }}"
+          name: "${{ steps.flavor.outputs.label }} v${{ steps.version.outputs.name }} (build ${{ steps.version.outputs.build }})"
           body: |
-            ## ${{ steps.deploy.outputs.flavor }} Release v${{ steps.deploy.outputs.version }}
-            
-            🔗 **[View Changelogs](https://floaty.fyi/changelogs#${{ steps.deploy.outputs.deployment_id }})**
-            
-            This release includes builds for:
-            ${{ needs.MACOSIOS.result == 'success' && '- 🍎 macOS (DMG, PKG)' || '' }}
-            ${{ needs.MACOSIOS.result == 'success' && '- 📱 iOS (IPA)' || '' }}
-            ${{ needs.MACOSIOS.result == 'success' && format('- 📲 [Install on iPhone (OTA)](https://{0}.github.io/{1}/)', github.repository_owner, github.event.repository.name) || '' }}
-            
-            **Deployment ID:** `${{ steps.deploy.outputs.deployment_id }}`
-            **Branch:** `${{ github.ref_name }}`
-            **Commit:** `${{ github.sha }}`
+            ## ${{ steps.flavor.outputs.label }} iOS build
+
+            - Version: `${{ steps.version.outputs.name }}`
+            - Build: `${{ steps.version.outputs.build }}`
+            - Branch: `${{ github.ref_name }}`
+            - Commit: `${{ github.sha }}`
+
+            Install on iPhone (OTA): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           draft: false
-          prerelease: ${{ steps.deploy.outputs.flavor != 'release' }}
-          files: |
-            release/macos/*
-            release/ios/*
-            release/manifest.json
+          prerelease: ${{ github.ref_name != 'release' }}
+          files: release/ios/*
 
       - name: Update OTA manifest for GitHub Pages
-        if: steps.deploy.outputs.deployment_id != '' && needs.MACOSIOS.result == 'success'
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          FLAVOR_LABEL: ${{ steps.flavor.outputs.label }}
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
-          TAG="${{ steps.deploy.outputs.flavor }}-v${{ steps.deploy.outputs.version }}-${{ steps.deploy.outputs.deployment_id }}"
-          IPA_FILE="floaty-${VERSION}-ios.ipa"
+          set -euo pipefail
+          TAG="${FLAVOR_LABEL}-v${VERSION_NAME}-build${BUILD_NUMBER}"
+          IPA_FILE="floaty-${VERSION_NAME}-ios.ipa"
           IPA_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${IPA_FILE}"
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           MANIFEST_URL="${PAGES_URL}/manifest.plist"
           INSTALL_URL="itms-services://?action=download-manifest&url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${MANIFEST_URL}', safe=''))")"
 
           sed -i "s|__IPA_URL__|${IPA_URL}|g" docs/manifest.plist
-          sed -i "s|__VERSION__|${VERSION}|g" docs/manifest.plist
-          sed -i "s|__VERSION__|${VERSION}|g" docs/index.html
+          sed -i "s|__BUILD_NUMBER__|${BUILD_NUMBER}|g" docs/manifest.plist
+          sed -i "s|__VERSION__|${VERSION_NAME}|g" docs/index.html
           sed -i "s|href=\"itms-services://[^\"]*\"|href=\"${INSTALL_URL}\"|g" docs/index.html
 
           git config user.name "github-actions[bot]"
@@ -292,10 +253,3 @@ jobs:
             git commit -m "chore: update OTA manifest for ${TAG} [skip ci]"
             git push
           fi
-
-      - name: Upload final package as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-package
-          path: "${{ env.PACKAGE_NAME }}"
-          retention-days: 30
