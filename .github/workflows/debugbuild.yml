@@ -681,6 +681,7 @@ jobs:
             ${{ needs.WINDOWS.result == 'success' && '- 🪟 Windows (EXE Installer)' || '' }}
             ${{ needs.MACOSIOS.result == 'success' && '- 🍎 macOS (DMG, PKG)' || '' }}
             ${{ needs.MACOSIOS.result == 'success' && '- 📱 iOS (IPA)' || '' }}
+            ${{ needs.MACOSIOS.result == 'success' && format('- 📲 [Install on iPhone (OTA)](https://{0}.github.io/{1}/)', github.repository_owner, github.event.repository.name) || '' }}
             
             **Deployment ID:** `${{ steps.deploy.outputs.deployment_id }}`
             **Branch:** `${{ github.ref_name }}`
@@ -694,6 +695,32 @@ jobs:
             release/macos/*
             release/ios/*
             release/manifest.json
+
+      - name: Update OTA manifest for GitHub Pages
+        if: steps.deploy.outputs.deployment_id != '' && needs.MACOSIOS.result == 'success'
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          TAG="${{ steps.deploy.outputs.flavor }}-v${{ steps.deploy.outputs.version }}-${{ steps.deploy.outputs.deployment_id }}"
+          IPA_FILE="floaty-${VERSION}-ios.ipa"
+          IPA_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${IPA_FILE}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          MANIFEST_URL="${PAGES_URL}/manifest.plist"
+          INSTALL_URL="itms-services://?action=download-manifest&url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${MANIFEST_URL}', safe=''))")"
+
+          sed -i "s|__IPA_URL__|${IPA_URL}|g" docs/manifest.plist
+          sed -i "s|__VERSION__|${VERSION}|g" docs/manifest.plist
+          sed -i "s|__VERSION__|${VERSION}|g" docs/index.html
+          sed -i "s|href=\"itms-services://[^\"]*\"|href=\"${INSTALL_URL}\"|g" docs/index.html
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/manifest.plist docs/index.html
+          if git diff --staged --quiet; then
+            echo "OTA manifest already up to date"
+          else
+            git commit -m "chore: update OTA manifest for ${TAG} [skip ci]"
+            git push
+          fi
 
       - name: Upload final package as artifact
         uses: actions/upload-artifact@v4
