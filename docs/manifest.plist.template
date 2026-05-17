@@ -12,7 +12,7 @@
           <key>kind</key>
           <string>software-package</string>
           <key>url</key>
-          <string>https://github.com/tojemoc/floaty/releases/download/cursor/fix-ota-manifest-plist-367d-v0.0.13-build13/floaty-0.0.13-ios.ipa</string>
+          <string>__IPA_URL__</string>
         </dict>
       </array>
       <key>metadata</key>
@@ -20,7 +20,7 @@
         <key>bundle-identifier</key>
         <string>uk.bw86.floaty</string>
         <key>bundle-version</key>
-        <string>13</string>
+        <string>__BUILD_NUMBER__</string>
         <key>kind</key>
         <string>software</string>
         <key>title</key>
