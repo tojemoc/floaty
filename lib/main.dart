@@ -3,11 +3,11 @@ import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.da
 import 'package:floaty/features/download/controllers/fp_download_service.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/features/whenplane/repositories/whenplaneintergration.dart';
+import 'package:floaty/app/flavor_theme.dart';
 import 'package:floaty/features/router/controllers/router.dart';
 import 'package:floaty/whitelabels.dart';
 import 'package:flutter/material.dart';
 import 'package:floaty/features/logs/repositories/log_service.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:floaty/features/api/repositories/fpapi.dart';
 import 'package:floaty/features/api/repositories/fpwebsockets.dart';
@@ -28,14 +28,13 @@ import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 import 'package:logging/logging.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart' as p;
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:floaty/shared/utils/safe_connectivity.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
 // import 'package:firebase_core/firebase_core.dart';
 // import 'package:firebase_messaging/firebase_messaging.dart';
 
 GetIt getIt = GetIt.instance;
-late final Color? flavorPrimary;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +62,11 @@ void main() async {
   getIt.registerSingleton<Settings>(
     Settings(),
   );
+
+  getIt.registerSingleton<UpdaterController>(
+    UpdaterController(),
+  );
+
   const flavor =
       String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
 
@@ -70,19 +74,13 @@ void main() async {
   MediaKit.ensureInitialized();
 
   // Monitor connectivity and sync offline progress when online
-  if (!kIsWeb) {
-    final connectivity = Connectivity();
-    connectivity.onConnectivityChanged.listen((result) async {
-      if (result.contains(ConnectivityResult.mobile) ||
-          result.contains(ConnectivityResult.wifi) ||
-          result.contains(ConnectivityResult.ethernet)) {
-        try {
-          final whitelabel = await Whitelabels().getSelectedWhitelabel();
-          await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
-        } catch (e) {
-          debugPrint(
-              'Failed to sync offline progress on connectivity change: $e');
-        }
+  if (!kIsWeb && !connectivityLikelyUnavailableOnLinux) {
+    listenForConnectivity((_) async {
+      try {
+        final whitelabel = await Whitelabels().getSelectedWhitelabel();
+        await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
+      } catch (e) {
+        debugPrint('Failed to sync offline progress on connectivity change: $e');
       }
     });
   }
@@ -146,10 +144,6 @@ void main() async {
   } catch (e) {
     debugPrint('Failed to sync offline progress on startup: $e');
   }
-
-  getIt.registerSingleton<UpdaterController>(
-    UpdaterController(),
-  );
 
   if (!Platform.isMacOS) {
     getIt.registerSingleton<DiscordRPCController>(
@@ -565,37 +559,6 @@ class MyApp extends StatelessWidget {
           },
         );
       },
-    );
-  }
-}
-
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    Future.delayed(const Duration(seconds: 2), () {
-      if (context.mounted) {
-        context.go('/');
-      }
-    });
-
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0d47a1),
-              Color(0xFF1976d2),
-            ],
-          ),
-        ),
-        child: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      ),
     );
   }
 }
