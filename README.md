@@ -111,6 +111,20 @@ The IPA is downloaded from GitHub Releases (HTTPS). The install manifest is serv
 
 **Expiry:** Ad Hoc provisioning profiles expire after about one year; rebuild and redistribute before expiry.
 
+### SideStore / AltStore source
+
+Host a [source JSON](https://faq.altstore.io/developers/make-a-source) and point each version’s `downloadURL` at an HTTPS `.ipa`. The IPA **must** use standard zip paths (`Payload/YourApp.app/...`). Do not zip with a relative path like `../../Payload` (CI used to do this on Linux); iOS reports that as **NSCocoaErrorDomain 513** (“no permission to download”) when SideStore extracts the archive.
+
+If you already published a broken IPA, repack without changing the app:
+
+```bash
+mkdir repack && cd repack
+unzip -q /path/to/floaty-release-ios.ipa
+zip -r ../floaty-release-ios-fixed.ipa Payload
+```
+
+Set `size` in the source JSON to the file size in bytes (`stat -c%s floaty-release-ios-fixed.ipa`). Use the real `bundleIdentifier` (`uk.bw86.floaty`) and match `appPermissions` to the built app.
+
 - **Windows**
   ```bash
   flutter build windows --<INSERT MODE>
