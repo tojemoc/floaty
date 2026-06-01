@@ -15,6 +15,25 @@ from datetime import datetime, timezone
 TAG_SUFFIX_RE = re.compile(r"-v(?P<version>[\d.]+)-build(?P<build>\d+)$", re.IGNORECASE)
 IPA_NAME_RE = re.compile(r"^floaty-(?P<version>[\d.]+)-ios\.ipa$", re.IGNORECASE)
 
+# When multiple GitHub releases share the same CFBundle version + build (e.g. CI on
+# different branches), AltStore only allows one entry per (version, buildVersion).
+FLAVOR_PRIORITY: dict[str, int] = {
+    "release": 0,
+    "beta": 1,
+    "nightly": 2,
+    "development": 3,
+    "dev": 3,
+}
+
+
+def flavor_rank(flavor: str) -> int:
+    key = flavor.lower()
+    if key in FLAVOR_PRIORITY:
+        return FLAVOR_PRIORITY[key]
+    if "/" in flavor:
+        return 100
+    return 50
+
 
 def api_get(url: str, token: str | None) -> object:
     headers = {
@@ -63,9 +82,17 @@ def iso_date(release: dict) -> str:
     return raw.replace("+00:00", "Z")
 
 
+def is_preferred(candidate: dict, incumbent: dict) -> bool:
+    """Prefer canonical release channels; tie-break with newer published date."""
+    c_rank = flavor_rank(candidate["_flavor"])
+    i_rank = flavor_rank(incumbent["_flavor"])
+    if c_rank != i_rank:
+        return c_rank < i_rank
+    return candidate["date"] > incumbent["date"]
+
+
 def build_versions(releases: list[dict]) -> list[dict]:
-    versions: list[dict] = []
-    seen: set[tuple[str, str, str]] = set()
+    best_by_version_build: dict[tuple[str, str], dict] = {}
 
     for release in releases:
         if release.get("draft"):
@@ -85,10 +112,7 @@ def build_versions(releases: list[dict]) -> list[dict]:
             version = tag_version or ipa_match.group("version")
             build = tag_build or "0"
             flavor_label = flavor or "unknown"
-            key = (flavor_label, version, build)
-            if key in seen:
-                continue
-            seen.add(key)
+            key = (version, build)
 
             description = body.split("\n")[0][:500] if body else None
             if flavor_label and flavor_label != "release":
@@ -102,15 +126,23 @@ def build_versions(releases: list[dict]) -> list[dict]:
             entry: dict = {
                 "version": version,
                 "buildVersion": build,
-                "marketingVersion": f"{flavor_label} {version} ({build})",
+                "marketingVersion": f"{version} ({build})",
                 "date": date,
                 "downloadURL": asset["browser_download_url"],
                 "size": asset["size"],
+                "_flavor": flavor_label,
             }
             if description:
                 entry["localizedDescription"] = description
 
-            versions.append(entry)
+            existing = best_by_version_build.get(key)
+            if existing is None or is_preferred(entry, existing):
+                best_by_version_build[key] = entry
+
+    versions: list[dict] = []
+    for entry in best_by_version_build.values():
+        entry.pop("_flavor", None)
+        versions.append(entry)
 
     versions.sort(key=lambda v: v["date"], reverse=True)
     return versions
