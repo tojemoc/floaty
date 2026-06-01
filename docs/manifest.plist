@@ -12,7 +12,7 @@
           <key>kind</key>
           <string>software-package</string>
           <key>url</key>
-          <string>https://github.com/tojemoc/floaty/releases/download/cursor/fix-ios-ipa-sidestore-packaging-81e9-v0.0.14-build14/floaty-0.0.14-ios.ipa</string>
+          <string>https://github.com/tojemoc/floaty/releases/download/cursor/fix-ios-ipa-sidestore-packaging-81e9-v0.0.15-build15/floaty-0.0.15-ios.ipa</string>
         </dict>
       </array>
       <key>metadata</key>
@@ -20,7 +20,7 @@
         <key>bundle-identifier</key>
         <string>uk.bw86.floaty</string>
         <key>bundle-version</key>
-        <string>14</string>
+        <string>15</string>
         <key>kind</key>
         <string>software</string>
         <key>title</key>
