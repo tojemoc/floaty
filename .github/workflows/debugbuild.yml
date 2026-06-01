@@ -134,16 +134,14 @@ jobs:
             --flavor ${{ steps.ios_flavor.outputs.flavor }} \
             --dart-define FLUTTER_FLAVOR=${{ github.ref_name }}
 
-      - name: Package iOS IPA
+      - name: Package iOS IPA for SideStore
         run: |
           VERSION_NAME="${{ steps.version.outputs.name }}"
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
           mkdir -p "dist/$VERSION_NAME"
-          # Zip from repo root so entries are Payload/... not ../../Payload/...
-          # (SideStore/AltStore fail with NSCocoaError 513 on parent-dir zip paths.)
-          zip -r "dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa" Payload
-          rm -rf Payload
+          chmod +x scripts/package-ios-ipa-for-sidestore.sh
+          scripts/package-ios-ipa-for-sidestore.sh \
+            build/ios/iphoneos/Runner.app \
+            "dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa"
           ls -la "dist/$VERSION_NAME/"
 
       - name: Verify IPA archive layout
@@ -234,11 +232,19 @@ jobs:
             - Commit: `${{ github.sha }}`
 
             Install on iPhone (OTA): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+            **SideStore / AltStore:** Add source URL  
+            `https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/altstore-source.json`
           draft: false
           prerelease: ${{ github.ref_name != 'release' }}
           files: release/ios/*
 
-      - name: Update OTA manifest for GitHub Pages
+      - name: Generate AltStore source from GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/generate-altstore-source.py
+
+      - name: Update GitHub Pages (OTA + AltStore source)
         env:
           VERSION_NAME: ${{ steps.version.outputs.name }}
           BUILD_NUMBER: ${{ steps.version.outputs.build }}
@@ -259,15 +265,17 @@ jobs:
           sed -i "s|__BUILD_NUMBER__|${BUILD_NUMBER}|g" docs/manifest.plist
 
           cp docs/index.html.template docs/index.html
+          ALTSTORE_SOURCE_URL="${PAGES_URL}/altstore-source.json"
           sed -i "s|__VERSION__|${VERSION_NAME}|g" docs/index.html
           sed -i "s|__INSTALL_URL__|${INSTALL_URL_SED}|g" docs/index.html
+          sed -i "s|__ALTSTORE_SOURCE_URL__|${ALTSTORE_SOURCE_URL}|g" docs/index.html
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/manifest.plist docs/index.html
+          git add docs/manifest.plist docs/index.html docs/altstore-source.json
           if git diff --staged --quiet; then
-            echo "OTA manifest already up to date"
+            echo "GitHub Pages files already up to date"
           else
-            git commit -m "chore: update OTA manifest for ${TAG} [skip ci]"
+            git commit -m "chore: update GitHub Pages (OTA + AltStore source) for ${TAG} [skip ci]"
             git push
           fi

@@ -77,12 +77,22 @@
       padding-left: 1.2rem;
     }
     .notes li { margin-bottom: 0.35rem; }
+    .source-url {
+      display: block;
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.75rem;
+      word-break: break-all;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 8px;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Floaty</h1>
-    <p class="version">Version 0.0.13</p>
+    <p class="version">Version 0.0.15</p>
     <a
       class="install-btn"
       href="itms-services://?action=download-manifest&amp;url=https%3A%2F%2Ftojemoc.github.io%2Ffloaty%2Fmanifest.plist"
@@ -94,6 +104,9 @@
         <li>Your device UDID must be registered for Ad Hoc builds.</li>
         <li>After install, go to <strong>Settings → General → VPN &amp; Device Management</strong> and trust the developer certificate.</li>
       </ul>
+      <p style="margin-top: 1.25rem;"><strong>SideStore / AltStore</strong></p>
+      <p>Add this source URL in SideStore (includes all GitHub pre-releases):</p>
+      <code class="source-url">https://tojemoc.github.io/floaty/altstore-source.json</code>
     </section>
   </main>
 </body>
