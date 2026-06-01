@@ -12,7 +12,7 @@ permissions:
 jobs:
   VERSION_BUMP:
     name: Bump Version
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       skip_bump: ${{ steps.check_skip.outputs.skip }}
     steps:
@@ -67,7 +67,7 @@ jobs:
 
   IOS:
     name: iOS IPA
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-26
     needs: VERSION_BUMP
     steps:
       - name: Checkout repository
@@ -167,7 +167,7 @@ jobs:
   RELEASE:
     name: Publish IPA and OTA
     needs: IOS
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: needs.IOS.result == 'success'
     steps:
       - name: Checkout repository
