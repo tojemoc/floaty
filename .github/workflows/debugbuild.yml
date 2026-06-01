@@ -3,7 +3,7 @@ name: Debug Build - Floaty
 on:
   push:
     branches:
-      - "**"
+      - main
 
 permissions:
   contents: write
