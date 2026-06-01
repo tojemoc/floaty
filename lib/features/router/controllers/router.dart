@@ -15,9 +15,9 @@ import 'package:floaty/features/post/views/post_screen.dart';
 import 'package:floaty/features/profile/views/profile_screen.dart';
 import 'package:floaty/features/settings/views/settings_screen.dart';
 import 'package:floaty/features/router/views/root_layout.dart';
+import 'package:floaty/features/router/views/splash_screen.dart';
 import 'package:floaty/features/updater/respositories/updater_controllers.dart';
 import 'package:floaty/features/updater/views/update_screen.dart';
-import 'package:floaty/main.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -276,17 +276,11 @@ Future<String?> _redirect(BuildContext context, GoRouterState state) async {
     final currentPath = state.uri.path;
 
     if (currentPath == '/update') {
-      // Always allow access to update screen
       return null;
     }
-    final data = await updatercontroller.getUpdate();
-    final packageInfo = await PackageInfo.fromPlatform();
-    if (data != null &&
-        data['deployment'] != null &&
-        data['deployment']['version'] != packageInfo.version) {
-      if (data['deployment']['required'] == 1) {
-        routerController.go('/update');
-      }
+    final updateRedirect = await updatercontroller.redirectPathIfUpdateRequired();
+    if (updateRedirect != null) {
+      return updateRedirect;
     }
 
     // Skip NetworkManager on Linux when D-Bus is unavailable (see safe_connectivity.dart).
