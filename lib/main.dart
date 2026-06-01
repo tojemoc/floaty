@@ -28,7 +28,7 @@ import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 import 'package:logging/logging.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart' as p;
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:floaty/shared/utils/safe_connectivity.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
 // import 'package:firebase_core/firebase_core.dart';
@@ -70,19 +70,13 @@ void main() async {
   MediaKit.ensureInitialized();
 
   // Monitor connectivity and sync offline progress when online
-  if (!kIsWeb) {
-    final connectivity = Connectivity();
-    connectivity.onConnectivityChanged.listen((result) async {
-      if (result.contains(ConnectivityResult.mobile) ||
-          result.contains(ConnectivityResult.wifi) ||
-          result.contains(ConnectivityResult.ethernet)) {
-        try {
-          final whitelabel = await Whitelabels().getSelectedWhitelabel();
-          await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
-        } catch (e) {
-          debugPrint(
-              'Failed to sync offline progress on connectivity change: $e');
-        }
+  if (!kIsWeb && !connectivityLikelyUnavailableOnLinux) {
+    listenForConnectivity((_) async {
+      try {
+        final whitelabel = await Whitelabels().getSelectedWhitelabel();
+        await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
+      } catch (e) {
+        debugPrint('Failed to sync offline progress on connectivity change: $e');
       }
     });
   }

@@ -65,6 +65,96 @@ jobs:
           commit_message: "chore: automated version bump [skip ci]"
           push_options: "--force"
 
+  LINUX:
+    name: Linux
+    runs-on: ubuntu-22.04
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull version bump commit
+        if: needs.VERSION_BUMP.outputs.skip_bump != 'true'
+        run: git pull --ff-only origin "${{ github.ref_name }}"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.4"
+          cache: true
+
+      - name: Fix Git ownership for Flutter
+        run: git config --global --add safe.directory '*'
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libmpv-dev \
+            libasound2-dev \
+            ninja-build \
+            clang \
+            cmake \
+            pkg-config
+
+      - name: Install AppImage tooling
+        run: |
+          wget -q -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/
+
+      - name: Prepare make_config.yaml
+        run: |
+          OS=linux
+          for config_file in $(find "$OS/packaging" -type f -name "make_config_${GITHUB_REF_NAME}.yaml"); do
+            target_dir=$(dirname "$config_file")
+            cp "$config_file" "${target_dir}/make_config.yaml"
+            echo "Copied $config_file → ${target_dir}/make_config.yaml"
+          done
+
+      - name: Install Fastforge
+        run: dart pub global activate fastforge
+
+      - name: Build Linux packages
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          fastforge release --name "${{ github.ref_name }}linux"
+
+      - name: Replace AppRun in AppImage
+        run: |
+          APPIMAGE_FILE=$(find dist -name "*.AppImage" -type f | head -1)
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "No AppImage found, skipping AppRun replacement"
+            exit 0
+          fi
+          APPIMAGE_FILE="$(cd "$(dirname "$APPIMAGE_FILE")" && pwd)/$(basename "$APPIMAGE_FILE")"
+          chmod +x "$APPIMAGE_FILE"
+          APPIMAGE_DIR=$(mktemp -d)
+          cd "$APPIMAGE_DIR"
+          "$APPIMAGE_FILE" --appimage-extract
+          if [ ! -d squashfs-root ]; then
+            echo "::error::AppImage extraction failed"
+            exit 1
+          fi
+          cp "$GITHUB_WORKSPACE/linux/packaging/appimage/AppRun" squashfs-root/AppRun
+          chmod +x squashfs-root/AppRun
+          cd "$GITHUB_WORKSPACE"
+          appimagetool -n "$APPIMAGE_DIR/squashfs-root" "$APPIMAGE_FILE"
+          rm -rf "$APPIMAGE_DIR"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/
+
   IOS:
     name: iOS IPA
     runs-on: macos-latest
