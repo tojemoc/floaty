@@ -1,0 +1,135 @@
+# Manual workflow: build or repack an IPA for SideStore/AltStore without a local Mac.
+# Runs on macos-latest (works with Blacksmith macOS runners).
+name: SideStore iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "build = Flutter iOS release; repack = fix an existing IPA URL"
+        required: true
+        type: choice
+        options:
+          - build
+          - repack
+      ipa_url:
+        description: "HTTPS .ipa URL (repack mode), e.g. floaty.fyi download link"
+        required: false
+        type: string
+      flavor:
+        description: "Flutter flavor (build mode only)"
+        required: false
+        default: production
+        type: choice
+        options:
+          - production
+          - beta
+          - nightly
+          - development
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  sidestore-ipa:
+    name: Prepare SideStore IPA
+    # macos-latest works on GitHub-hosted and Blacksmith macOS runners.
+    # If Blacksmith requires a custom label, set it here (e.g. blacksmith-4vcpu-macos-15).
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        if: inputs.mode == 'build'
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        if: inputs.mode == 'build'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.4"
+          cache: true
+
+      - name: Install dependencies
+        if: inputs.mode == 'build'
+        run: flutter pub get
+
+      - name: Parse version
+        if: inputs.mode == 'build'
+        id: version
+        run: |
+          set -euo pipefail
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' \r')
+          if [[ "$RAW" != *"+"* ]]; then
+            echo "::error::pubspec version must use NAME+BUILD (e.g. 0.0.14+14)"
+            exit 1
+          fi
+          echo "name=${RAW%%+*}" >> "$GITHUB_OUTPUT"
+          echo "build=${RAW#*+}" >> "$GITHUB_OUTPUT"
+
+      - name: Build iOS (no codesign)
+        if: inputs.mode == 'build'
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-name="${{ steps.version.outputs.name }}" \
+            --build-number="${{ steps.version.outputs.build }}" \
+            --flavor "${{ inputs.flavor }}" \
+            --dart-define "FLUTTER_FLAVOR=${{ github.ref_name }}"
+
+      - name: Package for SideStore
+        if: inputs.mode == 'build'
+        run: |
+          chmod +x scripts/package-ios-ipa-for-sidestore.sh
+          mkdir -p dist
+          scripts/package-ios-ipa-for-sidestore.sh \
+            build/ios/iphoneos/Runner.app \
+            "dist/floaty-sidestore-ios.ipa"
+
+      - name: Repack existing IPA for SideStore
+        if: inputs.mode == 'repack'
+        run: |
+          if [[ -z "${{ inputs.ipa_url }}" ]]; then
+            echo "::error::ipa_url is required for repack mode"
+            exit 1
+          fi
+          chmod +x scripts/repack-ios-ipa-for-sidestore.sh scripts/package-ios-ipa-for-sidestore.sh
+          mkdir -p dist
+          scripts/repack-ios-ipa-for-sidestore.sh \
+            "${{ inputs.ipa_url }}" \
+            "dist/floaty-sidestore-ios.ipa"
+
+      - name: Verify IPA layout
+        run: |
+          IPA="dist/floaty-sidestore-ios.ipa"
+          if unzip -l "$IPA" | awk 'NR>3 {print $4}' | grep -q '\.\./'; then
+            echo "::error::IPA zip entries must not contain ../"
+            exit 1
+          fi
+          if ! unzip -l "$IPA" | awk 'NR>3 && $4 != "" {print $4; exit}' | grep -q '^Payload/'; then
+            echo "::error::IPA must start with Payload/"
+            unzip -l "$IPA" | head -10
+            exit 1
+          fi
+
+      - name: SideStore source hints
+        run: |
+          IPA="dist/floaty-sidestore-ios.ipa"
+          SIZE=$(stat -f%z "$IPA")
+          {
+            echo "### SideStore / AltStore source"
+            echo ""
+            echo "Upload \`floaty-sidestore-ios.ipa\` to your host (e.g. floaty.fyi), then set:"
+            echo ""
+            echo '```json'
+            echo "\"downloadURL\": \"<your-https-url>\","
+            echo "\"size\": $SIZE"
+            echo '```'
+            echo ""
+            echo "bundleIdentifier: \`uk.bw86.floaty\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidestore-ios-ipa
+          path: dist/floaty-sidestore-ios.ipa
+          if-no-files-found: error

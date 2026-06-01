@@ -137,20 +137,11 @@ jobs:
       - name: Package iOS IPA
         run: |
           VERSION_NAME="${{ steps.version.outputs.name }}"
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          APP="Payload/Runner.app"
-          # Ad-hoc sign so SideStore/AltStore ldid can parse Flutter frameworks
-          # (unsigned Mach-O triggers ldid.cpp: end >= size - 0x10).
-          rm -rf "$APP/_CodeSignature"
-          rm -rf "$APP/Frameworks"/*/_CodeSignature
-          codesign -s - -f "$APP/Frameworks"/*
-          codesign -s - -f "$APP"
           mkdir -p "dist/$VERSION_NAME"
-          # Zip from repo root so entries are Payload/... not ../../Payload/...
-          # (SideStore/AltStore fail with NSCocoaError 513 on parent-dir zip paths.)
-          zip -r "dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa" Payload
-          rm -rf Payload
+          chmod +x scripts/package-ios-ipa-for-sidestore.sh
+          scripts/package-ios-ipa-for-sidestore.sh \
+            build/ios/iphoneos/Runner.app \
+            "dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa"
           ls -la "dist/$VERSION_NAME/"
 
       - name: Verify IPA archive layout

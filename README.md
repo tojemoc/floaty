@@ -113,23 +113,24 @@ The IPA is downloaded from GitHub Releases (HTTPS). The install manifest is serv
 
 ### SideStore / AltStore source
 
-Host a [source JSON](https://faq.altstore.io/developers/make-a-source) and point each version’s `downloadURL` at an HTTPS `.ipa`. The IPA **must** use standard zip paths (`Payload/YourApp.app/...`). Do not zip with a relative path like `../../Payload` (CI used to do this on Linux); iOS reports that as **NSCocoaErrorDomain 513** (“no permission to download”) when SideStore extracts the archive.
+Host a [source JSON](https://faq.altstore.io/developers/make-a-source) and point each version’s `downloadURL` at an HTTPS `.ipa`.
 
-If you already published a broken IPA, repack on a Mac (fixes zip paths and ldid signing):
+Release IPAs from CI are packaged for SideStore (correct `Payload/` zip paths + ad-hoc `codesign` on macOS). Common failures if you skip that:
 
-```bash
-mkdir repack && cd repack
-unzip -q /path/to/floaty-release-ios.ipa
-APP=Payload/Runner.app
-rm -rf "$APP/_CodeSignature" "$APP/Frameworks"/*/_CodeSignature
-codesign -s - -f "$APP/Frameworks"/*
-codesign -s - -f "$APP"
-zip -r ../floaty-release-ios-fixed.ipa Payload
-```
+| Error | Cause |
+|-------|--------|
+| NSCocoaError **513** | Zip entries use `../../Payload/...` instead of `Payload/...` |
+| `ldid.cpp(1461): end >= size - 0x10` | Unsigned Flutter frameworks (needs macOS `codesign`) |
 
-Without the `codesign` steps, SideStore may fail with `ldid.cpp(1461): _assert(): end >= size - 0x10` when resigning unsigned Flutter frameworks.
+**No Mac?** Use GitHub Actions (or Blacksmith macOS runners) — workflow **SideStore iOS IPA** (`ios-sidestore.yml`):
 
-Set `size` in the source JSON to the file size in bytes (`stat -f%z floaty-release-ios-fixed.ipa` on macOS). Use the real `bundleIdentifier` (`uk.bw86.floaty`) and match `appPermissions` to the built app.
+1. **Actions** → **SideStore iOS IPA** → **Run workflow**
+2. **repack** — paste your hosted IPA URL, e.g. `https://floaty.fyi/download/media/ios/0.0.4/floaty-release-ios.ipa`
+3. **build** — full Flutter iOS build + SideStore packaging (pick flavor)
+4. Download artifact **sidestore-ios-ipa**; the job summary prints the exact `size` for your source JSON
+5. Upload the `.ipa` to floaty.fyi (or GitHub Releases) and update `downloadURL` + `size`
+
+`bundleIdentifier` must be `uk.bw86.floaty`.
 
 - **Windows**
   ```bash
