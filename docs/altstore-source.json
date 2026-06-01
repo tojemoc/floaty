@@ -27,6 +27,33 @@
       "patreon": {},
       "versions": [
         {
+          "version": "0.0.19",
+          "buildVersion": "19",
+          "marketingVersion": "0.0.19 (19)",
+          "date": "2026-06-01T13:30:22Z",
+          "downloadURL": "https://github.com/tojemoc/floaty/releases/download/main-v0.0.19-build19/floaty-0.0.19-ios.ipa",
+          "size": 24946293,
+          "localizedDescription": "[main] ## main iOS build"
+        },
+        {
+          "version": "0.0.17",
+          "buildVersion": "17",
+          "marketingVersion": "0.0.17 (17)",
+          "date": "2026-06-01T12:21:56Z",
+          "downloadURL": "https://github.com/tojemoc/floaty/releases/download/cursor/fix-altstore-duplicate-versions-81e9-v0.0.17-build17/floaty-0.0.17-ios.ipa",
+          "size": 24940996,
+          "localizedDescription": "[cursor/fix-altstore-duplicate-versions-81e9] ## cursor/fix-altstore-duplicate-versions-81e9 iOS build"
+        },
+        {
+          "version": "0.0.16",
+          "buildVersion": "16",
+          "marketingVersion": "0.0.16 (16)",
+          "date": "2026-06-01T11:31:59Z",
+          "downloadURL": "https://github.com/tojemoc/floaty/releases/download/cursor/fix-altstore-duplicate-versions-81e9-v0.0.16-build16/floaty-0.0.16-ios.ipa",
+          "size": 24941003,
+          "localizedDescription": "[cursor/fix-altstore-duplicate-versions-81e9] ## cursor/fix-altstore-duplicate-versions-81e9 iOS build"
+        },
+        {
           "version": "0.0.15",
           "buildVersion": "15",
           "marketingVersion": "0.0.15 (15)",
@@ -34,15 +61,6 @@
           "downloadURL": "https://github.com/tojemoc/floaty/releases/download/cursor/altstore-source-github-pages-81e9-v0.0.15-build15/floaty-0.0.15-ios.ipa",
           "size": 24941018,
           "localizedDescription": "[cursor/altstore-source-github-pages-81e9] ## cursor/altstore-source-github-pages-81e9 iOS build"
-        },
-        {
-          "version": "0.0.16",
-          "buildVersion": "16",
-          "marketingVersion": "0.0.16 (16)",
-          "date": "2026-06-01T09:48:56Z",
-          "downloadURL": "https://github.com/tojemoc/floaty/releases/download/cursor/fix-ios-ipa-sidestore-packaging-81e9-v0.0.16-build16/floaty-0.0.16-ios.ipa",
-          "size": 24941040,
-          "localizedDescription": "[cursor/fix-ios-ipa-sidestore-packaging-81e9] ## cursor/fix-ios-ipa-sidestore-packaging-81e9 iOS build"
         },
         {
           "version": "0.0.14",
