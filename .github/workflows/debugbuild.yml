@@ -137,15 +137,28 @@ jobs:
       - name: Package iOS IPA
         run: |
           VERSION_NAME="${{ steps.version.outputs.name }}"
-          mkdir -p "dist/$VERSION_NAME"
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          (
-            cd "dist/$VERSION_NAME"
-            zip -r "floaty-${VERSION_NAME}-ios.ipa" ../../Payload
-          )
+          mkdir -p "dist/$VERSION_NAME"
+          # Zip from repo root so entries are Payload/... not ../../Payload/...
+          # (SideStore/AltStore fail with NSCocoaError 513 on parent-dir zip paths.)
+          zip -r "dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa" Payload
           rm -rf Payload
           ls -la "dist/$VERSION_NAME/"
+
+      - name: Verify IPA archive layout
+        run: |
+          VERSION_NAME="${{ steps.version.outputs.name }}"
+          IPA="dist/$VERSION_NAME/floaty-${VERSION_NAME}-ios.ipa"
+          if unzip -l "$IPA" | awk 'NR>3 {print $4}' | grep -q '\.\./'; then
+            echo "::error::IPA zip entries must not contain parent-directory paths (../)"
+            exit 1
+          fi
+          if ! unzip -l "$IPA" | awk 'NR>3 && $4 != "" {print $4; exit}' | grep -q '^Payload/'; then
+            echo "::error::IPA must contain Payload/ at archive root"
+            unzip -l "$IPA" | head -10
+            exit 1
+          fi
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
