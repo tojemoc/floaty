@@ -113,17 +113,16 @@ The IPA is downloaded from GitHub Releases (HTTPS). The install manifest is serv
 
 ### SideStore / AltStore source
 
-Host a [source JSON](https://faq.altstore.io/developers/make-a-source) and point each version’s `downloadURL` at an HTTPS `.ipa`. The IPA **must** use standard zip paths (`Payload/YourApp.app/...`). Do not zip with a relative path like `../../Payload` (CI used to do this on Linux); iOS reports that as **NSCocoaErrorDomain 513** (“no permission to download”) when SideStore extracts the archive.
+CI packages each release IPA for SideStore (correct `Payload/` zip layout + ad-hoc `codesign` on macOS) and regenerates an [AltStore source](https://faq.altstore.io/developers/make-a-source) on GitHub Pages from **all** GitHub Releases, including pre-releases.
 
-If you already published a broken IPA, repack without changing the app:
+**Source URL** (add once in SideStore):
 
-```bash
-mkdir repack && cd repack
-unzip -q /path/to/floaty-release-ios.ipa
-zip -r ../floaty-release-ios-fixed.ipa Payload
-```
+`https://<org>.github.io/<repo>/altstore-source.json`  
+(for example: `https://tojemoc.github.io/floaty/altstore-source.json`)
 
-Set `size` in the source JSON to the file size in bytes (`stat -c%s floaty-release-ios-fixed.ipa`). Use the real `bundleIdentifier` (`uk.bw86.floaty`) and match `appPermissions` to the built app.
+The file is updated automatically after each iOS release. Edit static metadata in `docs/altstore-source.meta.json`; version entries come from release assets (`floaty-*-ios.ipa`).
+
+The OTA install page also shows this URL under the SideStore section.
 
 - **Windows**
   ```bash
