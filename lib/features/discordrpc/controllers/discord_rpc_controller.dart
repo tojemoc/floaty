@@ -1,11 +1,16 @@
+import 'dart:io' show Platform;
+
 import 'package:floaty/features/helpers/respositories/capitalize.dart';
 import 'package:floaty/settings.dart';
 import 'package:floaty/whitelabels.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:get_it/get_it.dart';
 
 final discordRPCController = GetIt.I<DiscordRPCController>();
+bool get isDiscordRPCSupported =>
+    !kIsWeb && (Platform.isWindows || Platform.isLinux);
 
 class DiscordRPCController {
   bool initialized = false;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
 import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
 import 'package:floaty/features/download/controllers/fp_download_service.dart';
@@ -80,14 +82,10 @@ void main() async {
         final whitelabel = await Whitelabels().getSelectedWhitelabel();
         await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
       } catch (e) {
-        debugPrint('Failed to sync offline progress on connectivity change: $e');
+        debugPrint(
+            'Failed to sync offline progress on connectivity change: $e');
       }
     });
-  }
-
-  // Initialize protocol handler and register custom protocol
-  if (!kIsWeb) {
-    await ProtocolHandler.register();
   }
 
   // Initialize deep link service
@@ -134,18 +132,7 @@ void main() async {
     WhenPlaneIntegration(),
   );
 
-  // Initialize Floatplane download service
-  await _initFPDownloadService();
-
-  // Sync offline progress on app startup
-  try {
-    final whitelabel = await Whitelabels().getSelectedWhitelabel();
-    await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
-  } catch (e) {
-    debugPrint('Failed to sync offline progress on startup: $e');
-  }
-
-  if (!Platform.isMacOS) {
+  if (isDiscordRPCSupported) {
     getIt.registerSingleton<DiscordRPCController>(
       DiscordRPCController(),
     );
@@ -287,12 +274,16 @@ void main() async {
       },
     ),
   ));
+
+  _schedulePostFrameStartup();
 }
 
 class MyApp extends StatelessWidget {
   MyApp({super.key, this.lightDynamic, this.darkDynamic}) {
     // Set up window manager event handlers
-    windowManager.addListener(_AppWindowListener());
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      windowManager.addListener(_AppWindowListener());
+    }
   }
   final ColorScheme? lightDynamic;
   final ColorScheme? darkDynamic;
@@ -567,6 +558,51 @@ class _AppWindowListener extends WindowListener {
   @override
   void onWindowClose() async {
     await windowManager.hide();
+  }
+}
+
+void _schedulePostFrameStartup() {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!kIsWeb) {
+      _runStartupTask(
+        'protocol handler registration',
+        ProtocolHandler.register,
+      );
+    }
+
+    _runStartupTask(
+      'download service initialization',
+      _initFPDownloadService,
+    );
+
+    _runStartupTask(
+      'offline progress sync',
+      _syncOfflineProgressOnStartup,
+    );
+  });
+}
+
+void _runStartupTask(String name, Future<void> Function() task) {
+  unawaited(() async {
+    try {
+      await task();
+    } catch (error, stackTrace) {
+      debugPrint('Startup task failed ($name): $error');
+      LogService.logError('Startup task failed ($name): $error\n$stackTrace');
+    }
+  }());
+}
+
+Future<void> _syncOfflineProgressOnStartup() async {
+  try {
+    final whitelabel = await Whitelabels().getSelectedWhitelabel();
+    await fpApiRequests
+        .syncOfflineProgress(whitelabel.friendlyName)
+        .timeout(const Duration(seconds: 15));
+  } on TimeoutException {
+    debugPrint('Timed out syncing offline progress on startup');
+  } catch (e) {
+    debugPrint('Failed to sync offline progress on startup: $e');
   }
 }
 
