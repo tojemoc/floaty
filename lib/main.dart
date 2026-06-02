@@ -38,7 +38,15 @@ import 'package:floaty/shared/utils/safe_connectivity.dart';
 
 GetIt getIt = GetIt.instance;
 
-void main() async {
+void main() {
+  runZonedGuarded(() async {
+    await _main();
+  }, (error, stackTrace) {
+    LogService.logUncaughtError(error, stackTrace, source: 'zone');
+  });
+}
+
+Future<void> _main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   Logger.root.level = Level.ALL;
@@ -48,6 +56,7 @@ void main() async {
 
   // Initialize LogService to capture logs
   await LogService.init();
+  _installGlobalErrorHandlers();
 
   // Configure logging to print to console and save to LogService
   Logger.root.onRecord.listen((record) {
@@ -57,7 +66,7 @@ void main() async {
     print(logMessage);
 
     // Save to LogService for viewing in app
-    LogService.addLog(logMessage);
+    LogService.addLog(logMessage, level: record.level.name);
   });
   await Hive.openBox('settings');
   // Register Settings early so services/listeners started above can access it
@@ -276,6 +285,24 @@ void main() async {
   ));
 
   _schedulePostFrameStartup();
+}
+
+void _installGlobalErrorHandlers() {
+  final previousFlutterErrorHandler = FlutterError.onError;
+  FlutterError.onError = (details) {
+    LogService.logFlutterError(details);
+    if (previousFlutterErrorHandler != null) {
+      previousFlutterErrorHandler(details);
+    } else {
+      FlutterError.presentError(details);
+    }
+  };
+
+  final previousPlatformErrorHandler = PlatformDispatcher.instance.onError;
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    LogService.logUncaughtError(error, stackTrace, source: 'platform');
+    return previousPlatformErrorHandler?.call(error, stackTrace) ?? true;
+  };
 }
 
 class MyApp extends StatelessWidget {
