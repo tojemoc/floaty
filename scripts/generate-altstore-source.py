@@ -13,7 +13,12 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-TAG_SUFFIX_RE = re.compile(r"-v(?P<version>[\d.]+)-build(?P<build>\d+)$", re.IGNORECASE)
+# Fork tags:  {flavor}-v{version}-build{build}
+# Upstream tags: {flavor}-v{version}-{deploymentId}
+TAG_SUFFIX_RE = re.compile(
+    r"-v(?P<version>[\d.]+)(?:-build(?P<build>\d+)|-(?P<suffix>[^-]+))?$",
+    re.IGNORECASE,
+)
 IPA_NAME_RE = re.compile(r"^floaty-(?P<version>[\d.]+)-ios\.ipa$", re.IGNORECASE)
 
 # When multiple GitHub releases share the same CFBundle version + build (e.g. CI on
@@ -116,12 +121,19 @@ def fetch_all_releases(repo: str, token: str | None) -> list[dict]:
     return releases
 
 
+def build_number_from_version(version: str) -> str:
+    """Match CI --build-number when pubspec has no +build suffix."""
+    return version.rsplit(".", 1)[-1]
+
+
 def parse_tag(tag_name: str) -> tuple[str | None, str | None, str | None]:
     match = TAG_SUFFIX_RE.search(tag_name)
     if not match:
         return None, None, None
     version = match.group("version")
     build = match.group("build")
+    if build is None:
+        build = build_number_from_version(version)
     flavor = tag_name[: match.start()].strip("-") or "release"
     return flavor, version, build
 
@@ -161,7 +173,7 @@ def build_versions(releases: list[dict]) -> list[dict]:
                 continue
 
             version = tag_version or ipa_match.group("version")
-            build = tag_build or "0"
+            build = tag_build or build_number_from_version(version)
             flavor_label = flavor or "unknown"
             key = (version, build)
 

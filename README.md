@@ -86,43 +86,17 @@ You can build the app in either release or debug mode. If you're building it in 
   flutter build ios --<INSERT MODE>
   ```
 
-## iOS Over-the-Air (OTA) install for testers
+## iOS install via SideStore / AltStore
 
-CI builds an IPA on each successful deploy and publishes OTA install files under `docs/` for GitHub Pages. Source templates live in `docs/*.template`; CI generates `manifest.plist` and `index.html` with real release URLs and build numbers (never commit the template placeholders into the served files).
+CI builds an IPA on each deploy, packages it for SideStore (correct `Payload/` zip layout + ad-hoc `codesign` on macOS), and regenerates an [AltStore source](https://faq.altstore.io/developers/make-a-source) at `docs/altstore-source.json` from **all** GitHub Releases, including pre-releases.
 
-### One-time setup (repo maintainer)
+**Source URL** (add once in SideStore or AltStore):
 
-1. Open **Settings → Pages** in this repository.
-2. Set **Source** to deploy from the **`release`** branch (or your main deploy branch) using the **`/docs`** folder.
-3. After the next CI run that includes an iOS build, the install page is available at:
-   `https://<org>.github.io/<repo>/`  
-   (for example: `https://tojemoc.github.io/floaty/`)
+`https://github.com/floatyfp/floaty/blob/release/docs/altstore-source.json?raw=true`
 
-### Sharing with testers
+(or the equivalent raw URL for your fork/branch)
 
-1. Send testers the GitHub Pages URL above (or the link in the GitHub Release notes).
-2. They must open the page in **Safari** on iPhone and tap **Install on iPhone**.
-3. Their device **UDID must be registered** in your Apple Developer account (Ad Hoc distribution).
-4. After install: **Settings → General → VPN & Device Management** → trust the developer certificate.
-
-The IPA is downloaded from GitHub Releases (HTTPS). The install manifest is served from GitHub Pages. Both URLs must stay on HTTPS.
-
-**Signing:** OTA only works when the IPA is signed with a valid **Ad Hoc** or **Enterprise** profile. The CI job currently packages an unsigned IPA (`flutter build ios --no-codesign`); configure codesigning in the workflow before distributing to testers.
-
-**Expiry:** Ad Hoc provisioning profiles expire after about one year; rebuild and redistribute before expiry.
-
-### SideStore / AltStore source
-
-CI packages each release IPA for SideStore (correct `Payload/` zip layout + ad-hoc `codesign` on macOS) and regenerates an [AltStore source](https://faq.altstore.io/developers/make-a-source) on GitHub Pages from **all** GitHub Releases, including pre-releases.
-
-**Source URL** (add once in SideStore):
-
-`https://<org>.github.io/<repo>/altstore-source.json`  
-(for example: `https://tojemoc.github.io/floaty/altstore-source.json`)
-
-The file is updated automatically after each iOS release. Edit static metadata in `docs/altstore-source.meta.json`; version entries come from release assets (`floaty-*-ios.ipa`).
-
-The OTA install page also shows this URL under the SideStore section.
+Edit static metadata in `docs/altstore-source.meta.json`; version entries are filled automatically from release assets (`floaty-*-ios.ipa`).
 
 - **Windows**
   ```bash
