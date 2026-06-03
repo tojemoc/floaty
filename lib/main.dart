@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:floaty/features/deeplinks/controllers/deeplinks.dart';
 import 'package:floaty/features/discordrpc/controllers/discord_rpc_controller.dart';
 import 'package:floaty/features/download/controllers/fp_download_service.dart';
@@ -16,7 +18,6 @@ import 'package:floaty/shared/services/system/single_instance_service.dart';
 import 'package:floaty/shared/services/system/tray_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'dart:io' show Platform, exit;
 import 'package:flutter/foundation.dart';
 import 'package:app_links/app_links.dart';
 import 'package:media_kit/media_kit.dart';
@@ -28,6 +29,9 @@ import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 import 'package:logging/logging.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart' as p;
+import 'package:floaty/shared/utils/platform_info_stub.dart'
+    if (dart.library.io) 'package:floaty/shared/utils/platform_info_io.dart'
+    as platform_info;
 import 'package:floaty/shared/utils/safe_connectivity.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
@@ -36,7 +40,15 @@ import 'package:floaty/shared/utils/safe_connectivity.dart';
 
 GetIt getIt = GetIt.instance;
 
-void main() async {
+void main() {
+  runZonedGuarded(() async {
+    await _main();
+  }, (error, stackTrace) {
+    LogService.logUncaughtError(error, stackTrace, source: 'zone');
+  });
+}
+
+Future<void> _main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   Logger.root.level = Level.ALL;
@@ -46,6 +58,7 @@ void main() async {
 
   // Initialize LogService to capture logs
   await LogService.init();
+  _installGlobalErrorHandlers();
 
   // Configure logging to print to console and save to LogService
   Logger.root.onRecord.listen((record) {
@@ -55,7 +68,7 @@ void main() async {
     print(logMessage);
 
     // Save to LogService for viewing in app
-    LogService.addLog(logMessage);
+    LogService.addLog(logMessage, level: record.level.name);
   });
   await Hive.openBox('settings');
   // Register Settings early so services/listeners started above can access it
@@ -80,14 +93,10 @@ void main() async {
         final whitelabel = await Whitelabels().getSelectedWhitelabel();
         await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
       } catch (e) {
-        debugPrint('Failed to sync offline progress on connectivity change: $e');
+        debugPrint(
+            'Failed to sync offline progress on connectivity change: $e');
       }
     });
-  }
-
-  // Initialize protocol handler and register custom protocol
-  if (!kIsWeb) {
-    await ProtocolHandler.register();
   }
 
   // Initialize deep link service
@@ -134,24 +143,13 @@ void main() async {
     WhenPlaneIntegration(),
   );
 
-  // Initialize Floatplane download service
-  await _initFPDownloadService();
-
-  // Sync offline progress on app startup
-  try {
-    final whitelabel = await Whitelabels().getSelectedWhitelabel();
-    await fpApiRequests.syncOfflineProgress(whitelabel.friendlyName);
-  } catch (e) {
-    debugPrint('Failed to sync offline progress on startup: $e');
-  }
-
-  if (!Platform.isMacOS) {
+  if (isDiscordRPCSupported) {
     getIt.registerSingleton<DiscordRPCController>(
       DiscordRPCController(),
     );
   }
 
-  // if (Platform.isAndroid) {
+  // if (platform_info.isAndroid) {
   //   //init notifications
   //   await LogService.init();
   //   await Firebase.initializeApp(
@@ -204,17 +202,17 @@ void main() async {
       break;
   }
 
-  if (!Platform.isAndroid && !Platform.isIOS) {
+  if (!platform_info.isAndroid && !platform_info.isIOS) {
     // Initialize single instance service
     final singleInstanceService = await SingleInstanceService.getInstance();
     await singleInstanceService.initialize();
 
     // Only continue if this is the first instance
     // Note: For Windows, this is handled in initialize()
-    if (!Platform.isWindows) {
+    if (!platform_info.isWindows) {
       final isFirstInstance = await singleInstanceService.isFirstInstance();
       if (!isFirstInstance) {
-        exit(0);
+        platform_info.exitApp(0);
       }
     }
 
@@ -236,7 +234,7 @@ void main() async {
 
     switch (flavor) {
       case 'release':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/app_icon_win.ico');
         } else {
           //await windowManager.setIcon('assets/app_icon.png');
@@ -244,7 +242,7 @@ void main() async {
         await windowManager.setTitle('Floaty');
         break;
       case 'beta':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/beta_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/beta_icon.png');
@@ -252,7 +250,7 @@ void main() async {
         await windowManager.setTitle('Floaty Beta');
         break;
       case 'nightly':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/nightly_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/nightly_icon.png');
@@ -260,7 +258,7 @@ void main() async {
         await windowManager.setTitle('Floaty Nightly');
         break;
       case 'dev':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/dev_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/dev_icon.png');
@@ -268,7 +266,7 @@ void main() async {
         await windowManager.setTitle('Floaty Development');
         break;
       default:
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/app_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/app_icon.png');
@@ -287,12 +285,34 @@ void main() async {
       },
     ),
   ));
+
+  _schedulePostFrameStartup();
+}
+
+void _installGlobalErrorHandlers() {
+  final previousFlutterErrorHandler = FlutterError.onError;
+  FlutterError.onError = (details) {
+    LogService.logFlutterError(details);
+    if (previousFlutterErrorHandler != null) {
+      previousFlutterErrorHandler(details);
+    } else {
+      FlutterError.presentError(details);
+    }
+  };
+
+  final previousPlatformErrorHandler = PlatformDispatcher.instance.onError;
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    LogService.logUncaughtError(error, stackTrace, source: 'platform');
+    return previousPlatformErrorHandler?.call(error, stackTrace) ?? true;
+  };
 }
 
 class MyApp extends StatelessWidget {
   MyApp({super.key, this.lightDynamic, this.darkDynamic}) {
     // Set up window manager event handlers
-    windowManager.addListener(_AppWindowListener());
+    if (!platform_info.isAndroid && !platform_info.isIOS) {
+      windowManager.addListener(_AppWindowListener());
+    }
   }
   final ColorScheme? lightDynamic;
   final ColorScheme? darkDynamic;
@@ -570,10 +590,59 @@ class _AppWindowListener extends WindowListener {
   }
 }
 
+void _schedulePostFrameStartup() {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!kIsWeb) {
+      _runStartupTask(
+        'protocol handler registration',
+        ProtocolHandler.register,
+      );
+    }
+
+    _runStartupTask(
+      'download service initialization',
+      _initFPDownloadService,
+    );
+
+    _runStartupTask(
+      'offline progress sync',
+      _syncOfflineProgressOnStartup,
+    );
+  });
+}
+
+void _runStartupTask(String name, Future<void> Function() task) {
+  unawaited(() async {
+    try {
+      await task();
+    } catch (error, stackTrace) {
+      debugPrint('Startup task failed ($name): $error');
+      LogService.logError('Startup task failed ($name): $error\n$stackTrace');
+    }
+  }());
+}
+
+Future<void> _syncOfflineProgressOnStartup() async {
+  try {
+    final whitelabel = await Whitelabels().getSelectedWhitelabel();
+    await fpApiRequests
+        .syncOfflineProgress(whitelabel.friendlyName)
+        .timeout(const Duration(seconds: 15));
+  } on TimeoutException catch (e, stackTrace) {
+    debugPrint('Timed out syncing offline progress on startup');
+    LogService.logError(
+        'Timed out syncing offline progress on startup: $e\n$stackTrace');
+  } catch (e, stackTrace) {
+    debugPrint('Failed to sync offline progress on startup: $e');
+    LogService.logError(
+        'Failed to sync offline progress on startup: $e\n$stackTrace');
+  }
+}
+
 /// Initialize the Floatplane download service
 Future<void> _initFPDownloadService() async {
   // Initialize FFI database for desktop platforms
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  if (platform_info.isDesktop) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
