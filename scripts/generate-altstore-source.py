@@ -86,7 +86,7 @@ def wait_for_release_ipa(
                 file=sys.stderr,
             )
             return
-        remaining = int(deadline - time.monotonic())
+        remaining = max(0, int(deadline - time.monotonic()))
         print(
             f"Waiting for {tag} IPA on GitHub API "
             f"(attempt {attempt}, ~{remaining}s left)",
