@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -45,6 +46,56 @@ def api_get(url: str, token: str | None) -> object:
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=60) as response:
         return json.loads(response.read().decode())
+
+
+def release_has_ios_ipa(release: dict) -> bool:
+    for asset in release.get("assets") or []:
+        if IPA_NAME_RE.match(asset.get("name") or ""):
+            return True
+    return False
+
+
+def fetch_release_by_tag(repo: str, tag: str, token: str | None) -> dict | None:
+    url = f"https://api.github.com/repos/{repo}/releases/tags/{tag}"
+    try:
+        data = api_get(url, token)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+    return data if isinstance(data, dict) else None
+
+
+def wait_for_release_ipa(
+    repo: str,
+    tag: str,
+    token: str | None,
+    *,
+    timeout_seconds: int = 180,
+    poll_seconds: float = 5.0,
+) -> None:
+    """Block until GitHub's Releases API lists an iOS IPA for *tag*."""
+    deadline = time.monotonic() + timeout_seconds
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        release = fetch_release_by_tag(repo, tag, token)
+        if release and release_has_ios_ipa(release):
+            print(
+                f"Release {tag} has iOS IPA on API (attempt {attempt})",
+                file=sys.stderr,
+            )
+            return
+        remaining = max(0, int(deadline - time.monotonic()))
+        print(
+            f"Waiting for {tag} IPA on GitHub API "
+            f"(attempt {attempt}, ~{remaining}s left)",
+            file=sys.stderr,
+        )
+        time.sleep(poll_seconds)
+    raise TimeoutError(
+        f"Timed out after {timeout_seconds}s waiting for iOS IPA on release {tag}"
+    )
 
 
 def fetch_all_releases(repo: str, token: str | None) -> list[dict]:
@@ -161,6 +212,20 @@ def main() -> int:
         default="docs/altstore-source.json",
         help="Generated AltStore source path",
     )
+    parser.add_argument(
+        "--wait-tag",
+        default=os.environ.get("ALTSTORE_WAIT_RELEASE_TAG"),
+        help=(
+            "After creating a release, poll until this tag's IPA appears "
+            "in the GitHub API (avoids eventual-consistency races)"
+        ),
+    )
+    parser.add_argument(
+        "--wait-timeout",
+        type=int,
+        default=180,
+        help="Seconds to wait for --wait-tag IPA (default: 180)",
+    )
     args = parser.parse_args()
 
     if not args.repo:
@@ -173,6 +238,18 @@ def main() -> int:
         meta = json.load(handle)
 
     app_template = meta.pop("app")
+    if args.wait_tag:
+        try:
+            wait_for_release_ipa(
+                args.repo,
+                args.wait_tag,
+                token,
+                timeout_seconds=args.wait_timeout,
+            )
+        except TimeoutError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+
     try:
         releases = fetch_all_releases(args.repo, token)
     except urllib.error.HTTPError as exc:

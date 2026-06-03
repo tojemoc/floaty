@@ -242,6 +242,7 @@ jobs:
       - name: Generate AltStore source from GitHub Releases
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          ALTSTORE_WAIT_RELEASE_TAG: ${{ steps.flavor.outputs.label }}-v${{ steps.version.outputs.name }}-build${{ steps.version.outputs.build }}
         run: python3 scripts/generate-altstore-source.py
 
       - name: Update GitHub Pages (OTA + AltStore source)

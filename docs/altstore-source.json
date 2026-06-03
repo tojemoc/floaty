@@ -27,6 +27,15 @@
       "patreon": {},
       "versions": [
         {
+          "version": "0.0.21",
+          "buildVersion": "21",
+          "marketingVersion": "0.0.21 (21)",
+          "date": "2026-06-03T05:45:36Z",
+          "downloadURL": "https://github.com/tojemoc/floaty/releases/download/main-v0.0.21-build21/floaty-0.0.21-ios.ipa",
+          "size": 24517762,
+          "localizedDescription": "[main] ## main iOS build"
+        },
+        {
           "version": "0.0.20",
           "buildVersion": "20",
           "marketingVersion": "0.0.20 (20)",
