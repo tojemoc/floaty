@@ -117,8 +117,10 @@ class FPDownloadService {
 
   Future<void> _initNotifications() async {
     try {
+      final dbusSessionBusAddress =
+          Platform.environment['DBUS_SESSION_BUS_ADDRESS'];
       if (Platform.isLinux &&
-          !Platform.environment.containsKey('DBUS_SESSION_BUS_ADDRESS')) {
+          (dbusSessionBusAddress == null || dbusSessionBusAddress.isEmpty)) {
         _logger?.log(
             '[FPDownloadService] Skipping notifications; D-Bus session bus is unavailable');
         _notificationsInitialized = false;

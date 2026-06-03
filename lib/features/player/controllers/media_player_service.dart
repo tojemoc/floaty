@@ -402,9 +402,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
       });
     }
     if (isDiscordRPCSupported &&
-        (_currentArtist?.toLowerCase() != 'ecc squad' ||
-            _currentArtist?.toLowerCase() != 'eccsquad' ||
-            !_currentDiscoverable)) {
+        _currentArtist?.toLowerCase() != 'ecc squad' &&
+        _currentArtist?.toLowerCase() != 'eccsquad' &&
+        _currentDiscoverable) {
       durationStream.listen((duration) {
         if (duration == Duration.zero) {
           discordRPCController.updateRPC(
@@ -762,9 +762,9 @@ class MediaPlayerService extends Notifier<MediaPlayerState> {
     const flavor =
         String.fromEnvironment('FLUTTER_FLAVOR', defaultValue: 'release');
     if (isDiscordRPCSupported &&
-        (_currentArtist?.toLowerCase() != 'ecc squad' ||
-            _currentArtist?.toLowerCase() != 'eccsquad' ||
-            !_currentDiscoverable)) {
+        _currentArtist?.toLowerCase() != 'ecc squad' &&
+        _currentArtist?.toLowerCase() != 'eccsquad' &&
+        _currentDiscoverable) {
       discordRPCController.updateRPC(
           _whitelabelName ?? 'Unknown Whitelabel',
           title ?? 'Unknown Title',

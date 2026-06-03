@@ -18,7 +18,6 @@ import 'package:floaty/shared/services/system/single_instance_service.dart';
 import 'package:floaty/shared/services/system/tray_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'dart:io' show Platform, exit;
 import 'package:flutter/foundation.dart';
 import 'package:app_links/app_links.dart';
 import 'package:media_kit/media_kit.dart';
@@ -30,6 +29,9 @@ import 'package:floaty/features/deeplinks/controllers/protocol_handler.dart';
 import 'package:logging/logging.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart' as p;
+import 'package:floaty/shared/utils/platform_info_stub.dart'
+    if (dart.library.io) 'package:floaty/shared/utils/platform_info_io.dart'
+    as platform_info;
 import 'package:floaty/shared/utils/safe_connectivity.dart';
 // import 'package:floaty/features/notifications/controllers/firebase.dart';
 // import 'package:floaty/features/notifications/controllers/notification.dart';
@@ -147,7 +149,7 @@ Future<void> _main() async {
     );
   }
 
-  // if (Platform.isAndroid) {
+  // if (platform_info.isAndroid) {
   //   //init notifications
   //   await LogService.init();
   //   await Firebase.initializeApp(
@@ -200,17 +202,17 @@ Future<void> _main() async {
       break;
   }
 
-  if (!Platform.isAndroid && !Platform.isIOS) {
+  if (!platform_info.isAndroid && !platform_info.isIOS) {
     // Initialize single instance service
     final singleInstanceService = await SingleInstanceService.getInstance();
     await singleInstanceService.initialize();
 
     // Only continue if this is the first instance
     // Note: For Windows, this is handled in initialize()
-    if (!Platform.isWindows) {
+    if (!platform_info.isWindows) {
       final isFirstInstance = await singleInstanceService.isFirstInstance();
       if (!isFirstInstance) {
-        exit(0);
+        platform_info.exitApp(0);
       }
     }
 
@@ -232,7 +234,7 @@ Future<void> _main() async {
 
     switch (flavor) {
       case 'release':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/app_icon_win.ico');
         } else {
           //await windowManager.setIcon('assets/app_icon.png');
@@ -240,7 +242,7 @@ Future<void> _main() async {
         await windowManager.setTitle('Floaty');
         break;
       case 'beta':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/beta_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/beta_icon.png');
@@ -248,7 +250,7 @@ Future<void> _main() async {
         await windowManager.setTitle('Floaty Beta');
         break;
       case 'nightly':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/nightly_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/nightly_icon.png');
@@ -256,7 +258,7 @@ Future<void> _main() async {
         await windowManager.setTitle('Floaty Nightly');
         break;
       case 'dev':
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/dev_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/dev_icon.png');
@@ -264,7 +266,7 @@ Future<void> _main() async {
         await windowManager.setTitle('Floaty Development');
         break;
       default:
-        if (Platform.isWindows) {
+        if (platform_info.isWindows) {
           await windowManager.setIcon('assets/icon/app_icon_win.ico');
         } else {
           await windowManager.setIcon('assets/app_icon.png');
@@ -308,7 +310,7 @@ void _installGlobalErrorHandlers() {
 class MyApp extends StatelessWidget {
   MyApp({super.key, this.lightDynamic, this.darkDynamic}) {
     // Set up window manager event handlers
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!platform_info.isAndroid && !platform_info.isIOS) {
       windowManager.addListener(_AppWindowListener());
     }
   }
@@ -626,17 +628,21 @@ Future<void> _syncOfflineProgressOnStartup() async {
     await fpApiRequests
         .syncOfflineProgress(whitelabel.friendlyName)
         .timeout(const Duration(seconds: 15));
-  } on TimeoutException {
+  } on TimeoutException catch (e, stackTrace) {
     debugPrint('Timed out syncing offline progress on startup');
-  } catch (e) {
+    LogService.logError(
+        'Timed out syncing offline progress on startup: $e\n$stackTrace');
+  } catch (e, stackTrace) {
     debugPrint('Failed to sync offline progress on startup: $e');
+    LogService.logError(
+        'Failed to sync offline progress on startup: $e\n$stackTrace');
   }
 }
 
 /// Initialize the Floatplane download service
 Future<void> _initFPDownloadService() async {
   // Initialize FFI database for desktop platforms
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  if (platform_info.isDesktop) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }

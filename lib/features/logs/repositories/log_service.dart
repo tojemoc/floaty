@@ -27,8 +27,9 @@ class LogService {
       String.fromEnvironment('FLOATY_REMOTE_LOG_TOKEN');
   static final String _sessionId = DateTime.now().toUtc().toIso8601String();
   static List<String> _logs = [];
+  static bool _remoteEndpointRejectionLogged = false;
 
-  static bool get remoteLoggingConfigured => _remoteLogEndpoint.isNotEmpty;
+  static bool get remoteLoggingConfigured => _validatedRemoteLogUri != null;
   static String get remoteLogEndpoint => _remoteLogEndpoint;
 
   static Future<void> init() async {
@@ -109,6 +110,7 @@ class LogService {
   static Future<RemoteLogUploadResult> uploadLogSnapshot(
       {required String source, required List<String> logs}) async {
     if (!remoteLoggingConfigured) {
+      _logInvalidRemoteLogEndpointIfNeeded();
       return const RemoteLogUploadResult(
         success: false,
         message:
@@ -139,6 +141,21 @@ class LogService {
           ? 'Sent ${logs.length} log lines to the remote endpoint.'
           : 'Remote endpoint returned HTTP ${response.statusCode}.',
     );
+  }
+
+  @visibleForTesting
+  static bool isRemoteLogEndpointAllowed(Uri uri) {
+    final scheme = uri.scheme.toLowerCase();
+    if (!uri.hasScheme || !uri.hasAuthority || uri.host.isEmpty) {
+      return false;
+    }
+    if (scheme == 'https') {
+      return true;
+    }
+    if (scheme == 'http' && _isLoopbackHost(uri.host)) {
+      return true;
+    }
+    return false;
   }
 
   @visibleForTesting
@@ -183,8 +200,9 @@ class LogService {
   static Future<http.Response?> _postRemotePayload(
       Map<String, dynamic> payload) async {
     try {
-      final uri = Uri.tryParse(_remoteLogEndpoint);
-      if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+      final uri = _validatedRemoteLogUri;
+      if (uri == null) {
+        _logInvalidRemoteLogEndpointIfNeeded();
         return null;
       }
 
@@ -200,6 +218,35 @@ class LogService {
     } catch (_) {
       return null;
     }
+  }
+
+  static Uri? get _validatedRemoteLogUri {
+    if (_remoteLogEndpoint.isEmpty) return null;
+
+    final uri = Uri.tryParse(_remoteLogEndpoint);
+    if (uri == null || !isRemoteLogEndpointAllowed(uri)) {
+      return null;
+    }
+    return uri;
+  }
+
+  static void _logInvalidRemoteLogEndpointIfNeeded() {
+    if (_remoteLogEndpoint.isEmpty ||
+        _validatedRemoteLogUri != null ||
+        _remoteEndpointRejectionLogged) {
+      return;
+    }
+
+    _remoteEndpointRejectionLogged = true;
+    _logger.w(
+        'Remote logging endpoint rejected; use HTTPS or HTTP loopback only: $_remoteLogEndpoint');
+  }
+
+  static bool _isLoopbackHost(String host) {
+    final normalizedHost = host.toLowerCase();
+    return normalizedHost == 'localhost' ||
+        normalizedHost == '127.0.0.1' ||
+        normalizedHost == '::1';
   }
 
   static String get _platformName {
